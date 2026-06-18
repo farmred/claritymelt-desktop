@@ -1,0 +1,273 @@
+/** ClarityMelt data models.
+ *
+ * These mirror the API response types from the original web app.
+ */
+
+class MachineInfo {
+  final String id;
+  final String name;
+  final String? alias; // User-assigned friendly name
+  final String provider; // "ovh", "ovh-dedicated", "ovh-vps", "hetzner"
+  final String status;
+  final List<String> ipAddresses;
+  final String region;
+  final String? flavor;
+  final String? image;
+  final String createdAt;
+  // Hardware specs (may be null for some providers)
+  final int? vcpus;
+  final int? memoryMB;
+  final int? diskGB;
+  final String? bandwidth;
+  final String? os;
+  final String? commercialRange;
+  final Map<String, dynamic>? raw;
+  // Uncloud association (persisted in DB)
+  final String? uncloudMachineId;
+  final String? uncloudContext;
+
+  MachineInfo({
+    required this.id,
+    required this.name,
+    required this.provider,
+    required this.status,
+    required this.ipAddresses,
+    required this.region,
+    this.alias,
+    this.flavor,
+    this.image,
+    this.createdAt = '',
+    this.vcpus,
+    this.memoryMB,
+    this.diskGB,
+    this.bandwidth,
+    this.os,
+    this.commercialRange,
+    this.raw,
+    this.uncloudMachineId,
+    this.uncloudContext,
+  });
+
+  /// Display name: alias if set, otherwise the provider name.
+  String get displayName => alias != null && alias!.isNotEmpty ? alias! : name;
+
+  String get providerLabel {
+    switch (provider) {
+      case 'ovh':
+        return 'OVH';
+      case 'ovh-dedicated':
+        return 'OVH Dedicated';
+      case 'ovh-vps':
+        return 'OVH VPS';
+      case 'hetzner':
+        return 'Hetzner';
+      default:
+        return provider.toUpperCase();
+    }
+  }
+
+  String get statusLabel {
+    switch (status.toLowerCase()) {
+      case 'running':
+      case 'active':
+        return 'Running';
+      case 'stopped':
+      case 'off':
+        return 'Stopped';
+      default:
+        return status;
+    }
+  }
+
+  bool get isRunning =>
+      status.toLowerCase() == 'running' || status.toLowerCase() == 'active';
+}
+
+class DomainInfo {
+  final String name;
+  final String provider; // "namecheap", "cloudflare", "ovh", "external"
+  final List<String> nameservers;
+  final String? cfZoneId;
+  final String? cfStatus;
+  final String? expires;
+  final String? dnsProvider; // Who manages DNS records: "cloudflare", "ovh", "namecheap"
+  /// Cloudflare-assigned nameservers for this zone (e.g. ["bob.ns.cloudflare.com", "zoe.ns.cloudflare.com"])
+  final List<String> cfNameservers;
+  final Map<String, dynamic>? raw;
+
+  DomainInfo({
+    required this.name,
+    required this.provider,
+    required this.nameservers,
+    this.cfZoneId,
+    this.cfStatus,
+    this.expires,
+    this.dnsProvider,
+    this.cfNameservers = const [],
+    this.raw,
+  });
+
+  /// Whether DNS records can be viewed/managed for this domain.
+  bool get canManageDns => dnsProvider != null || cfZoneId != null;
+
+  /// Which provider to use for DNS operations.
+  String get effectiveDnsProvider {
+    if (cfZoneId != null) return 'cloudflare';
+    if (dnsProvider != null) return dnsProvider!;
+    return provider; // fallback to domain registrar
+  }
+
+  /// The identifier for DNS operations (zone ID for CF, domain name for others).
+  String get dnsZoneId => cfZoneId ?? name;
+
+  /// Whether the domain's nameservers are correctly pointing to the DNS provider.
+  /// For Cloudflare-managed domains, checks if any nameserver ends with cloudflare.com
+  /// or matches the assigned CF nameservers.
+  bool get nameserverMismatch {
+    if (effectiveDnsProvider == 'cloudflare' && cfZoneId != null) {
+      if (nameservers.isEmpty) return true; // No nameservers set at all
+      // Check if any nameserver looks like a Cloudflare NS
+      final hasCloudflareNs = nameservers.any((ns) => ns.toLowerCase().endsWith('.ns.cloudflare.com'));
+      if (hasCloudflareNs) return false;
+      // Also check if the registrar NS matches any of the CF-assigned ones
+      if (cfNameservers.isNotEmpty) {
+        final registrarLower = nameservers.map((ns) => ns.toLowerCase()).toSet();
+        final cfLower = cfNameservers.map((ns) => ns.toLowerCase()).toSet();
+        return !registrarLower.any((ns) => cfLower.contains(ns));
+      }
+      return true; // No Cloudflare NS found
+    }
+    return false;
+  }
+
+  String get providerLabel {
+    switch (provider) {
+      case 'namecheap':
+        return 'Namecheap';
+      case 'cloudflare':
+        return 'Cloudflare';
+      case 'ovh':
+        return 'OVH';
+      default:
+        return provider.toUpperCase();
+    }
+  }
+}
+
+class DnsRecordInfo {
+  final String id;
+  final String type;
+  final String name;
+  final String content;
+  final int ttl;
+  final bool proxied;
+  final int? priority;
+  final String zoneId;
+  final String zoneName;
+  final String provider; // "cloudflare", "ovh", "namecheap"
+
+  DnsRecordInfo({
+    required this.id,
+    required this.type,
+    required this.name,
+    required this.content,
+    required this.ttl,
+    this.proxied = false,
+    this.priority,
+    required this.zoneId,
+    required this.zoneName,
+    this.provider = 'cloudflare',
+  });
+
+  String get ttlLabel => ttl == 1 ? 'Auto' : ttl.toString();
+
+  String get providerLabel {
+    switch (provider) {
+      case 'cloudflare':
+        return 'Cloudflare';
+      case 'ovh':
+        return 'OVH';
+      case 'namecheap':
+        return 'Namecheap';
+      default:
+        return provider.toUpperCase();
+    }
+  }
+}
+
+/// Named OVH endpoint mappings for display.
+const kOvhEndpointLabels = <String, String>{
+  'ovh-eu': 'OVH Europe (eu.api.ovh.com)',
+  'ovh-us': 'OVH US (api.us.ovhcloud.com)',
+  'ovh-ca': 'OVH Canada (ca.api.ovh.com)',
+  'kimsufi-eu': 'Kimsufi Europe',
+  'kimsufi-ca': 'Kimsufi Canada',
+  'soyoustart-eu': 'SoYouStart Europe',
+  'soyoustart-ca': 'SoYouStart Canada',
+};
+
+class ProviderCredentialInfo {
+  final String id;
+  final String provider;
+  final String label;
+  final Map<String, String> maskedFields;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  /// The OVH endpoint key (e.g. 'ovh-eu', 'ovh-us'), null for non-OVH providers.
+  final String? ovhEndpoint;
+
+  ProviderCredentialInfo({
+    required this.id,
+    required this.provider,
+    required this.label,
+    required this.maskedFields,
+    required this.createdAt,
+    required this.updatedAt,
+    this.ovhEndpoint,
+  });
+
+  String get providerLabel {
+    switch (provider) {
+      case 'ovh':
+        return 'OVH Cloud';
+      case 'hetzner':
+        return 'Hetzner Cloud';
+      case 'namecheap':
+        return 'Namecheap';
+      case 'cloudflare':
+        return 'Cloudflare';
+      default:
+        return provider.toUpperCase();
+    }
+  }
+
+  /// Human-readable region label for OVH credentials.
+  String get ovhEndpointLabel {
+    if (ovhEndpoint == null) return '';
+    return kOvhEndpointLabels[ovhEndpoint!] ?? ovhEndpoint!;
+  }
+}
+
+class ProviderStatus {
+  final bool db;
+  final bool env;
+  final String source; // "db", "env", "none"
+
+  ProviderStatus({
+    required this.db,
+    required this.env,
+    required this.source,
+  });
+}
+
+class ProvisionResult {
+  final Map<String, dynamic> zone;
+  final Map<String, dynamic> dnsRecord;
+  final bool nameserversUpdated;
+
+  ProvisionResult({
+    required this.zone,
+    required this.dnsRecord,
+    this.nameserversUpdated = false,
+  });
+}
