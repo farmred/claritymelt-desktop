@@ -58,7 +58,9 @@ class MachinesScreen extends ConsumerWidget {
           }
 
           final running = machines.where((m) => m.isRunning).length;
-          final ovhCount = machines.where((m) => m.provider == 'ovh' || m.provider == 'ovh-vps' || m.provider == 'ovh-dedicated').length;
+          final ovhVps = machines.where((m) => m.provider == 'ovh-vps').length;
+          final ovhDedicated = machines.where((m) => m.provider == 'ovh-dedicated').length;
+          final ovhCloud = machines.where((m) => m.provider == 'ovh').length;
           final hetznerCount = machines.where((m) => m.provider == 'hetzner').length;
 
           return ListView(
@@ -77,9 +79,17 @@ class MachinesScreen extends ConsumerWidget {
                   const SizedBox(width: 12),
                   Expanded(child: StatCard(label: 'RUNNING', value: '$running', valueColor: AppColors.success)),
                   const SizedBox(width: 12),
-                  Expanded(child: StatCard(label: 'OVH', value: '$ovhCount', valueColor: AppColors.ovh)),
-                  const SizedBox(width: 12),
-                  Expanded(child: StatCard(label: 'HETZNER', value: '$hetznerCount', valueColor: AppColors.hetzner)),
+                  Expanded(
+                    child: _BreakdownCard(
+                      label: 'SERVICES',
+                      items: [
+                        if (ovhCloud > 0) _BreakdownItem(icon: Icons.cloud_outlined, label: 'Cloud', count: ovhCloud, color: AppColors.ovh),
+                        if (ovhVps > 0) _BreakdownItem(icon: Icons.dns_outlined, label: 'VPS', count: ovhVps, color: AppColors.ovh),
+                        if (ovhDedicated > 0) _BreakdownItem(icon: Icons.storage, label: 'Ded', count: ovhDedicated, color: AppColors.ovh),
+                        if (hetznerCount > 0) _BreakdownItem(icon: Icons.cloud_queue, label: 'Hetzner', count: hetznerCount, color: AppColors.hetzner),
+                      ],
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 20),
@@ -197,6 +207,36 @@ class _MachineCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 12),
 
+                      // ── Service type + specs ──
+                      if (machine.hasSpecs || machine.serviceTypeLabel.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            _ServiceTypeIcon(provider: machine.provider, size: 14, color: AppColors.secondary),
+                            const SizedBox(width: 4),
+                            Text(
+                              machine.serviceTypeLabel,
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5, fontFamily: AppTheme.bodyFont, color: AppColors.secondary),
+                            ),
+                            if (machine.specsSummary.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.tertiary.withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(2),
+                                  border: Border.all(color: AppColors.tertiary.withValues(alpha: 0.2)),
+                                ),
+                                child: Text(
+                                  machine.specsSummary,
+                                  style: TextStyle(fontSize: 11, fontFamily: AppTheme.bodyFont, color: AppColors.tertiary, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+
                       // Details grid
                       Wrap(
                         spacing: 16,
@@ -293,6 +333,63 @@ class _MachineCard extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Icon for the type of hosting service (VPS, Dedicated, Cloud Instance, etc.).
+class _ServiceTypeIcon extends StatelessWidget {
+  final String provider;
+  final double size;
+  final Color color;
+
+  const _ServiceTypeIcon({required this.provider, this.size = 14, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Icon(AppTheme.serviceTypeIcon(provider), size: size, color: color);
+  }
+}
+
+class _BreakdownItem {
+  final IconData icon;
+  final String label;
+  final int count;
+  final Color color;
+  const _BreakdownItem({required this.icon, required this.label, required this.count, required this.color});
+}
+
+class _BreakdownCard extends StatelessWidget {
+  final String label;
+  final List<_BreakdownItem> items;
+  const _BreakdownCard({required this.label, required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: AppTheme.labelStyle),
+            const SizedBox(height: 8),
+            ...items.map((item) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                children: [
+                  Icon(item.icon, size: 14, color: item.color),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(item.label, style: TextStyle(fontSize: 13, color: AppColors.primary, fontFamily: AppTheme.bodyFont)),
+                  ),
+                  Text('${item.count}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: item.color, fontFamily: AppTheme.displayFont)),
+                ],
+              ),
+            )),
+          ],
         ),
       ),
     );

@@ -81,6 +81,42 @@ class MachineInfo {
 
   bool get isRunning =>
       status.toLowerCase() == 'running' || status.toLowerCase() == 'active';
+
+  /// Human-readable label for the type of hosting service.
+  /// e.g. "OVH VPS", "OVH Dedicated", "OVH Cloud", "Hetzner Cloud"
+  String get serviceTypeLabel {
+    switch (provider) {
+      case 'ovh':
+        return 'OVH Cloud Instance';
+      case 'ovh-vps':
+        return 'OVH VPS';
+      case 'ovh-dedicated':
+        return 'OVH Dedicated';
+      case 'hetzner':
+        return 'Hetzner Cloud';
+      default:
+        return providerLabel;
+    }
+  }
+
+  /// Short one-line specs summary, e.g. "2 vCPU · 4 GB · 40 GB SSD"
+  String get specsSummary {
+    final parts = <String>[];
+    if (vcpus != null) parts.add('$vcpus vCPU${vcpus! > 1 ? 's' : ''}');
+    if (memoryMB != null) {
+      if (memoryMB! >= 1024) {
+        parts.add('${(memoryMB! / 1024).toStringAsFixed(memoryMB! % 1024 == 0 ? 0 : 1)} GB RAM');
+      } else {
+        parts.add('$memoryMB MB RAM');
+      }
+    }
+    if (diskGB != null) parts.add('$diskGB GB');
+    return parts.join(' · ');
+  }
+
+  /// Whether this machine has any hardware spec data.
+  bool get hasSpecs =>
+      vcpus != null || memoryMB != null || diskGB != null || bandwidth != null;
 }
 
 class DomainInfo {

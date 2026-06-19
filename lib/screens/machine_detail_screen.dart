@@ -83,10 +83,26 @@ class _MachineDetailScreenState extends ConsumerState<MachineDetailScreen> {
             children: [
               Expanded(child: StatCard(label: 'STATUS', value: widget.machine.statusLabel, valueColor: AppTheme.statusColor(widget.machine.status))),
               const SizedBox(width: 12),
-              Expanded(child: StatCard(label: 'PROVIDER', value: AppTheme.providerLabel(widget.machine.provider))),
+              Expanded(
+                child: _ServiceTypeStatCard(machine: widget.machine),
+              ),
               if (widget.machine.ipAddresses.isNotEmpty) ...[
                 const SizedBox(width: 12),
                 Expanded(child: StatCard(label: 'PUBLIC IPS', value: '${widget.machine.ipAddresses.length}')),
+              ],
+              if (widget.machine.vcpus != null) ...[
+                const SizedBox(width: 12),
+                Expanded(child: StatCard(label: 'vCPUs', value: '${widget.machine.vcpus}', valueColor: AppColors.tertiary)),
+              ],
+              if (widget.machine.memoryMB != null) ...[
+                const SizedBox(width: 12),
+                Expanded(child: StatCard(label: 'RAM', value: widget.machine.memoryMB! >= 1024
+                    ? '${(widget.machine.memoryMB! / 1024).toStringAsFixed(widget.machine.memoryMB! % 1024 == 0 ? 0 : 1)} GB'
+                    : '${widget.machine.memoryMB} MB')),
+              ],
+              if (widget.machine.diskGB != null) ...[
+                const SizedBox(width: 12),
+                Expanded(child: StatCard(label: 'DISK', value: '${widget.machine.diskGB} GB')),
               ],
             ],
           ),
@@ -203,6 +219,41 @@ class _StatusHeader extends StatelessWidget {
                   Row(
                     children: [
                       AppTheme.providerBadge(machine.provider),
+                      const SizedBox(width: 8),
+                      // Service type label
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.tertiary.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(2),
+                          border: Border.all(color: AppColors.tertiary.withValues(alpha: 0.2)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(AppTheme.serviceTypeIcon(machine.provider), size: 12, color: AppColors.tertiary),
+                            const SizedBox(width: 4),
+                            Text(
+                              machine.serviceTypeLabel,
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.3, fontFamily: AppTheme.bodyFont, color: AppColors.tertiary),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (machine.specsSummary.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceVariant,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                          child: Text(
+                            machine.specsSummary,
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, fontFamily: AppTheme.bodyFont, color: AppColors.secondary),
+                          ),
+                        ),
+                      ],
                       if (machine.flavor != null) ...[
                         const SizedBox(width: 8),
                         Container(
@@ -357,7 +408,26 @@ class _SpecsSection extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('HARDWARE & SOFTWARE', style: AppTheme.labelStyle),
+            Row(
+              children: [
+                Icon(AppTheme.serviceTypeIcon(machine.provider), size: 18, color: AppColors.tertiary),
+                const SizedBox(width: 8),
+                const Text('HARDWARE & SOFTWARE', style: AppTheme.labelStyle),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.tertiary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(2),
+                    border: Border.all(color: AppColors.tertiary.withValues(alpha: 0.2)),
+                  ),
+                  child: Text(
+                    machine.serviceTypeLabel,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.3, fontFamily: AppTheme.bodyFont, color: AppColors.tertiary),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 16),
             Wrap(
               spacing: 24,
@@ -2014,4 +2084,40 @@ String _truncateImage(String image) {
   final parts = image.split(':');
   final tag = parts.length > 1 ? parts.last : image;
   return tag.length > 24 ? '${tag.substring(0, 21)}...' : tag;
+}
+
+/// Stat card showing the service type with icon and provider color.
+class _ServiceTypeStatCard extends StatelessWidget {
+  final MachineInfo machine;
+  const _ServiceTypeStatCard({required this.machine});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = AppTheme.providerColor(machine.provider);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('TYPE', style: AppTheme.labelStyle),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(AppTheme.serviceTypeIcon(machine.provider), size: 20, color: color),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    machine.serviceTypeLabel,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: color, fontFamily: AppTheme.displayFont),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

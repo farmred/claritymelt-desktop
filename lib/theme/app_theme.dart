@@ -277,6 +277,22 @@ class AppTheme {
     );
   }
 
+  /// Icon for the type of hosting service.
+  static IconData serviceTypeIcon(String provider) {
+    switch (provider) {
+      case 'ovh-vps':
+        return Icons.dns_outlined;
+      case 'ovh-dedicated':
+        return Icons.storage;
+      case 'ovh':
+        return Icons.cloud_outlined;
+      case 'hetzner':
+        return Icons.cloud_queue;
+      default:
+        return Icons.computer;
+    }
+  }
+
   static const TextStyle labelStyle = TextStyle(
     fontSize: 11,
     fontWeight: FontWeight.w700,
