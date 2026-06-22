@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_pty/flutter_pty.dart';
 import 'package:xterm/xterm.dart';
 
 import '../theme/app_theme.dart';
@@ -25,6 +27,10 @@ class SshTerminalScreen extends StatefulWidget {
   /// Display label for the terminal title bar.
   final String? titleOverride;
 
+  /// Optional password for SSH authentication.
+  /// If provided, used when the server requests password auth.
+  final String? password;
+
   const SshTerminalScreen({
     super.key,
     required this.host,
@@ -33,6 +39,7 @@ class SshTerminalScreen extends StatefulWidget {
     this.sshKeyFile,
     this.localCommand,
     this.titleOverride,
+    this.password,
   });
 
   @override
@@ -42,7 +49,7 @@ class SshTerminalScreen extends StatefulWidget {
 class _SshTerminalScreenState extends State<SshTerminalScreen> {
   late Terminal terminal;
   SSHClient? _sshClient;
-  Process? _localProcess;
+  Pty? _localPty;
   String _status = 'Connecting…';
   bool _connected = false;
   String? _error;
@@ -65,7 +72,7 @@ class _SshTerminalScreenState extends State<SshTerminalScreen> {
   @override
   void dispose() {
     _sshClient?.close();
-    _localProcess?.kill();
+    _localPty?.kill();
     super.dispose();
   }
 
@@ -110,6 +117,10 @@ class _SshTerminalScreenState extends State<SshTerminalScreen> {
         username: widget.username,
         identities: identities,
         onPasswordRequest: () {
+          if (widget.password != null && widget.password!.isNotEmpty) {
+            AppLog.info('SSH: providing password for ${widget.username}');
+            return widget.password!;
+          }
           // No password available — key auth should work
           AppLog.warning('SSH: server requested password auth (no password available)');
           return '';
@@ -172,18 +183,23 @@ class _SshTerminalScreenState extends State<SshTerminalScreen> {
     );
   }
 
-  // ── Local Command ────────────────────────────────────────────────────
+  // ── Local Command (with PTY for interactive terminal support) ────────
 
   Future<void> _connectLocal() async {
     final cmd = widget.localCommand!;
-    AppLog.info('Local: starting command: ${cmd.join(' ')}');
+    AppLog.info('Local: starting command with PTY: ${cmd.join(' ')}');
     try {
-      _localProcess = await Process.start(
+      _localPty = Pty.start(
         cmd.first,
-        cmd.sublist(1),
-        environment: realHomeEnvironment(),
+        arguments: cmd.sublist(1),
+        environment: {
+          ...realHomeEnvironment(),
+          'TERM': 'xterm-256color',
+        },
+        rows: terminal.viewHeight,
+        columns: terminal.viewWidth,
       );
-      AppLog.debug('Local: process started (pid: ${_localProcess!.pid})');
+      AppLog.debug('Local: PTY process started (pid: ${_localPty!.pid})');
 
       if (!mounted) return;
 
@@ -192,35 +208,43 @@ class _SshTerminalScreenState extends State<SshTerminalScreen> {
         _status = 'Running';
       });
 
+      // Wire terminal output to PTY input
       terminal.onOutput = (data) {
-        _localProcess!.stdin.write(data);
+        _localPty!.write(utf8.encode(data));
       };
 
-      _localProcess!.stdout.listen(
+      // Wire terminal resize to PTY resize
+      terminal.onResize = (width, height, pixelWidth, pixelHeight) {
+        _localPty!.resize(height, width);
+      };
+
+      // Pipe PTY output to terminal
+      _localPty!.output.listen(
         (data) {
           if (!mounted) return;
           terminal.write(utf8.decode(data, allowMalformed: true));
         },
-        onDone: _handleDisconnect,
-        onError: (_) => _handleDisconnect(),
-      );
-
-      _localProcess!.stderr.listen(
-        (data) {
-          if (!mounted) return;
-          terminal.write(utf8.decode(data, allowMalformed: true));
+        onDone: () {
+          AppLog.info('Local: PTY output stream closed');
+          _handleDisconnect();
+        },
+        onError: (e) {
+          AppLog.error('Local: PTY output error', e);
+          _handleDisconnect();
         },
       );
 
-      final exitCode = await _localProcess!.exitCode;
-      AppLog.info('Local: process exited with code $exitCode');
-      if (mounted && exitCode != 0) {
-        terminal.write('\r\n\x1b[33mProcess exited with code $exitCode\x1b[0m\r\n');
+      // Wait for exit code
+      _localPty!.exitCode.then((exitCode) {
+        AppLog.info('Local: PTY process exited with code $exitCode');
+        if (mounted && exitCode != 0) {
+          terminal.write('\r\n\x1b[33mProcess exited with code $exitCode\x1b[0m\r\n');
+        }
         _handleDisconnect();
-      }
+      });
 
     } catch (e, st) {
-      AppLog.error('Local: command failed: ${cmd.join(' ')}', e, st);
+      AppLog.error('Local: PTY command failed: ${cmd.join(' ')}', e, st);
       if (!mounted) return;
       setState(() {
         _error = e.toString();
@@ -247,7 +271,7 @@ class _SshTerminalScreenState extends State<SshTerminalScreen> {
       _connected = false;
     });
     _sshClient?.close();
-    _localProcess?.kill();
+    _localPty?.kill();
     if (_isLocal) {
       _connectLocal();
     } else {

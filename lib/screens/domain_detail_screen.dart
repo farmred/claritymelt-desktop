@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../providers/app_providers.dart';
 import '../theme/app_theme.dart';
 import '../widgets/notes_and_tasks_section.dart';
+import 'machine_detail_screen.dart';
 
 class DomainDetailScreen extends ConsumerWidget {
   final DomainInfo domain;
@@ -255,34 +256,48 @@ class DomainDetailScreen extends ConsumerWidget {
                     const SizedBox(height: 16),
                     ...linkedMachines.map((machine) => Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceVariant,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: AppColors.outline),
-                        ),
-                        child: Row(
-                          children: [
-                            AppTheme.statusDot(machine.status, size: 8),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    machine.displayName,
-                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, fontFamily: AppTheme.bodyFont),
-                                  ),
-                                  Text(
-                                    machine.ipAddresses.join(', '),
-                                    style: TextStyle(fontSize: 11, color: AppColors.secondary, fontFamily: AppTheme.bodyFont),
-                                  ),
-                                ],
+                      child: InkWell(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => MachineDetailScreen(machine: machine)),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(4),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceVariant,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: AppColors.outline),
+                          ),
+                          child: Row(
+                            children: [
+                              AppTheme.statusDot(machine.status, size: 8),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Text(
+                                          machine.displayName,
+                                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, fontFamily: AppTheme.bodyFont, color: AppColors.tertiary),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Icon(Icons.open_in_new, size: 11, color: AppColors.tertiary.withValues(alpha: 0.6)),
+                                      ],
+                                    ),
+                                    Text(
+                                      machine.ipAddresses.join(', '),
+                                      style: TextStyle(fontSize: 11, color: AppColors.secondary, fontFamily: AppTheme.bodyFont),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            AppTheme.providerBadge(machine.provider),
-                          ],
+                              AppTheme.providerBadge(machine.provider),
+                            ],
+                          ),
                         ),
                       ),
                     )),

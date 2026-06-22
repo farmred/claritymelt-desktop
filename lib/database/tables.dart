@@ -31,6 +31,8 @@ class CachedMachines extends Table {
   TextColumn get raw => text().nullable()(); // Full provider response JSON
   TextColumn get uncloudMachineId => text().nullable()(); // Uncloud machine ID (e.g. "fb307942f2421d182608fa64aced3eed")
   TextColumn get uncloudContext => text().nullable()(); // Uncloud context name (e.g. "default-1")
+  RealColumn get monthlyCost => real().nullable()(); // Monthly cost in provider currency
+  TextColumn get currency => text().nullable()(); // Currency code (EUR, USD, etc.)
   DateTimeColumn get lastSyncedAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();

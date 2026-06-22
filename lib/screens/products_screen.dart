@@ -242,6 +242,46 @@ class _ProductCard extends ConsumerWidget {
                     resources: pages,
                   ),
                 ],
+                // ── UC Context ──
+                Builder(
+                  builder: (context) {
+                    final machinesList = ref.watch(machinesProvider).value ?? [];
+                    final ucContexts = <String>{};
+                    for (final mRes in machines) {
+                      final m = machinesList.where((m) => m.id == mRes.resourceId).firstOrNull;
+                      if (m != null && m.uncloudContext != null && m.uncloudContext!.isNotEmpty) {
+                        ucContexts.add(m.uncloudContext!);
+                      }
+                    }
+                    if (ucContexts.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            const Icon(Icons.cloud_outlined, size: 14, color: AppColors.success),
+                            const SizedBox(width: 6),
+                            const Text('UC CONTEXTS', style: AppTheme.labelStyle),
+                            const SizedBox(width: 8),
+                            ...ucContexts.map((ctx) => Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppColors.success.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                                ),
+                                child: Text(ctx, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.success, fontFamily: AppTheme.bodyFont)),
+                              ),
+                            )),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ],
             ),
           ),
@@ -783,6 +823,54 @@ class ProductDetailScreen extends ConsumerWidget {
               color: const Color(0xFF8B5CF6),
               resources: pages,
             ),
+
+          // ── UC Contexts for machines in this product ──
+          Builder(
+            builder: (context) {
+              final machinesList = ref.watch(machinesProvider).value ?? [];
+              final ucContexts = <String>{};
+              for (final mRes in machines) {
+                final m = machinesList.where((m) => m.id == mRes.resourceId).firstOrNull;
+                if (m != null && m.uncloudContext != null && m.uncloudContext!.isNotEmpty) {
+                  ucContexts.add(m.uncloudContext!);
+                }
+              }
+              if (ucContexts.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.cloud_outlined, size: 18, color: AppColors.success),
+                            const SizedBox(width: 8),
+                            const Text('UC CONTEXTS', style: AppTheme.labelStyle),
+                            const SizedBox(width: 8),
+                            ...ucContexts.map((ctx) => Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppColors.success.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                                ),
+                                child: Text(ctx, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.success, fontFamily: AppTheme.bodyFont)),
+                              ),
+                            )),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );

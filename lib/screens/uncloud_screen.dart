@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_providers.dart';
 import '../services/uncloud_service.dart';
 import '../theme/app_theme.dart';
+import 'uncloud_context_dialog.dart';
 
 class UncloudScreen extends ConsumerWidget {
   const UncloudScreen({super.key});
@@ -224,7 +225,18 @@ class UncloudScreen extends ConsumerWidget {
           children: [
             Icon(Icons.dns, size: 16, color: isActive ? AppColors.tertiary : AppColors.secondary),
             const SizedBox(width: 8),
-            Text(name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, fontFamily: AppTheme.bodyFont, color: isActive ? AppColors.tertiary : AppColors.primary)),
+            InkWell(
+              onTap: () => showUncloudContextDetailDialog(context: context, contextName: name, ctx: ctx, isActive: isActive),
+              borderRadius: BorderRadius.circular(4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, fontFamily: AppTheme.bodyFont, color: isActive ? AppColors.tertiary : AppColors.primary)),
+                  const SizedBox(width: 4),
+                  Icon(Icons.open_in_new, size: 12, color: isActive ? AppColors.tertiary : AppColors.secondary),
+                ],
+              ),
+            ),
             const SizedBox(width: 8),
             if (isActive)
               Container(

@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../models/product_models.dart';
 import '../providers/app_providers.dart';
 import '../theme/app_theme.dart';
+import 'machine_detail_screen.dart';
 
 class DnsManagerScreen extends ConsumerStatefulWidget {
   const DnsManagerScreen({super.key});
@@ -232,6 +233,7 @@ class _DnsRecordsPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final machines = ref.watch(machinesProvider).value ?? [];
     return recordsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (err, _) => Center(
@@ -438,7 +440,7 @@ class _DnsRecordsPanel extends ConsumerWidget {
                               ),
                             )),
                             DataCell(Text(record.name, style: const TextStyle(fontWeight: FontWeight.w500))),
-                            DataCell(Text(record.content, style: const TextStyle(fontFamily: 'monospace', fontSize: 12))),
+                            DataCell(_buildContentCell(context, record, machines)),
                             DataCell(Text(record.ttlLabel, style: const TextStyle(color: AppColors.secondary))),
                             if (isCloudflare)
                               DataCell(record.proxied
@@ -479,6 +481,34 @@ class _DnsRecordsPanel extends ConsumerWidget {
         );
       },
     );
+  }
+
+  Widget _buildContentCell(BuildContext context, DnsRecordInfo record, List<MachineInfo> machines) {
+    // For A/AAAA records, check if the content (IP) matches a machine
+    if (record.type == 'A' || record.type == 'AAAA') {
+      final matchingMachine = machines.where((m) => m.ipAddresses.contains(record.content)).firstOrNull;
+      if (matchingMachine != null) {
+        return GestureDetector(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => MachineDetailScreen(machine: matchingMachine)),
+            );
+          },
+          child: Tooltip(
+            message: '${matchingMachine.displayName} — Click to view machine',
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(record.content, style: TextStyle(fontFamily: 'monospace', fontSize: 12, color: AppColors.tertiary, decoration: TextDecoration.underline, decorationColor: AppColors.tertiary)),
+                const SizedBox(width: 4),
+                Icon(Icons.computer, size: 12, color: AppColors.tertiary),
+              ],
+            ),
+          ),
+        );
+      }
+    }
+    return Text(record.content, style: const TextStyle(fontFamily: 'monospace', fontSize: 12));
   }
 
   void _confirmDelete(BuildContext context, WidgetRef ref, String recordId) {

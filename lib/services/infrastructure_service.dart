@@ -247,6 +247,8 @@ class InfrastructureService {
             diskGB: inst['diskGB'] is int ? inst['diskGB'] : (inst['flavor'] is Map ? inst['flavor']['disk'] : null)?.toInt(),
             os: inst['os']?.toString() ?? image,
             raw: inst,
+            monthlyCost: _extractMonthlyCost(inst),
+            currency: _extractCurrency(inst) ?? 'EUR',
           ));
         }
       } catch (e, st) {
@@ -283,6 +285,8 @@ class InfrastructureService {
             os: os,
             commercialRange: null,
             raw: vps,
+            monthlyCost: _extractMonthlyCost(vps),
+            currency: _extractCurrency(vps) ?? 'EUR',
           ));
         }
       } catch (e, st) {
@@ -315,6 +319,8 @@ class InfrastructureService {
             bandwidth: srv['bandwidth']?.toString(),
             os: os,
             raw: srv,
+            monthlyCost: _extractMonthlyCost(srv),
+            currency: _extractCurrency(srv) ?? 'EUR',
           ));
         }
       } catch (e, st) {
@@ -331,6 +337,32 @@ class InfrastructureService {
         print('[ClarityMelt] Hetzner: ${servers.length} found');
         for (final srv in servers) {
           final id = srv['id']?.toString() ?? 'unknown';
+          // Extract monthly cost from Hetzner server_type.prices
+          double? monthlyCost;
+          String? currency;
+          final serverType = srv['server_type'];
+          if (serverType is Map) {
+            final prices = serverType['prices'];
+            if (prices is List && prices.isNotEmpty) {
+              // Use the first price entry (usually the default location)
+              final priceEntry = prices[0] as Map;
+              final monthly = priceEntry['price_monthly'];
+              if (monthly is Map) {
+                final net = monthly['net'];
+                if (net is num) monthlyCost = net.toDouble();
+                else if (net is String) monthlyCost = double.tryParse(net);
+                final gross = monthly['gross'];
+                if (monthlyCost == null && gross is num) monthlyCost = gross.toDouble();
+                else if (monthlyCost == null && gross is String) monthlyCost = double.tryParse(gross);
+              } else if (monthly is num) {
+                monthlyCost = monthly.toDouble();
+              } else if (monthly is String) {
+                monthlyCost = double.tryParse(monthly);
+              }
+              // Hetzner prices are always in EUR
+              currency = 'EUR';
+            }
+          }
           machines.add(MachineInfo(
             id: 'hetzner-$id',
             name: srv['name']?.toString() ?? 'unnamed',
@@ -346,6 +378,8 @@ class InfrastructureService {
             diskGB: _parseIntField(srv, 'diskGB', 'server_type', 'disk'),
             os: _extractOs(srv),
             raw: srv,
+            monthlyCost: monthlyCost,
+            currency: currency,
           ));
         }
       } catch (e, st) {
@@ -388,6 +422,71 @@ class InfrastructureService {
     return null;
   }
 
+  /// Extract monthly cost from raw API data.
+  /// Hetzner: server_type.prices[].price_monthly.net
+  /// OVH Cloud: flavor.monthlyPrice or plan.monthlyPrice
+  /// OVH VPS/Dedicated: price (from service API or catalog)
+  static double? _extractMonthlyCost(Map<String, dynamic> raw) {
+    // Hetzner: server_type.prices[].price_monthly
+    final serverType = raw['server_type'];
+    if (serverType is Map) {
+      final prices = serverType['prices'];
+      if (prices is List && prices.isNotEmpty) {
+        final priceEntry = prices[0];
+        if (priceEntry is Map) {
+          final monthly = priceEntry['price_monthly'];
+          if (monthly is Map) {
+            final net = monthly['net'];
+            if (net is num) return net.toDouble();
+            if (net is String) return double.tryParse(net);
+          } else if (monthly is num) {
+            return monthly.toDouble();
+          } else if (monthly is String) {
+            return double.tryParse(monthly);
+          }
+        }
+      }
+    }
+    // OVH Cloud: flavor.monthlyPrice
+    final flavor = raw['flavor'];
+    if (flavor is Map) {
+      final mp = flavor['monthlyPrice'] ?? flavor['monthly_price'];
+      if (mp is num) return mp.toDouble();
+      if (mp is String) return double.tryParse(mp);
+    }
+    // OVH: price field at top level
+    final price = raw['price'];
+    if (price is Map) {
+      final monthly = price['monthly'] ?? price['monthlyPrice'] ?? price['value'];
+      if (monthly is num) return monthly.toDouble();
+      if (monthly is String) return double.tryParse(monthly);
+    } else if (price is num) {
+      return price.toDouble();
+    } else if (price is String) {
+      return double.tryParse(price);
+    }
+    // OVH: monthlyPrice at top level
+    final monthlyPrice = raw['monthlyPrice'] ?? raw['monthly_price'];
+    if (monthlyPrice is num) return monthlyPrice.toDouble();
+    if (monthlyPrice is String) return double.tryParse(monthlyPrice);
+    return null;
+  }
+
+  /// Extract currency from raw API data.
+  static String? _extractCurrency(Map<String, dynamic> raw) {
+    // Hetzner always uses EUR
+    if (raw['server_type'] != null) return 'EUR';
+    // OVH typically uses EUR
+    final price = raw['price'];
+    if (price is Map) {
+      final cur = price['currency'] ?? price['currencyCode'];
+      if (cur is String) return cur;
+    }
+    final cur = raw['currency'] ?? raw['currencyCode'];
+    if (cur is String) return cur;
+    return null;
+  }
+
   /// Extract OS name from a server response map.
   static String? _extractOs(Map<String, dynamic> srv) {
     if (srv['os'] != null) return srv['os'].toString();
@@ -425,6 +524,8 @@ class InfrastructureService {
         raw: raw,
         uncloudMachineId: r.uncloudMachineId,
         uncloudContext: r.uncloudContext,
+        monthlyCost: r.monthlyCost,
+        currency: r.currency,
       );
     }).toList();
   }
@@ -458,6 +559,8 @@ class InfrastructureService {
           raw: Value(m.raw != null ? jsonEncode(m.raw) : null),
           uncloudMachineId: Value(m.uncloudMachineId ?? existingUcId),
           uncloudContext: Value(m.uncloudContext ?? existingUcCtx),
+          monthlyCost: Value(m.monthlyCost),
+          currency: Value(m.currency),
           lastSyncedAt: Value(now),
         );
       }).toList(),
