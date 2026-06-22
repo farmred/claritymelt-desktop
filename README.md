@@ -1,21 +1,10 @@
 # ClarityMelt Desktop (Flutter macOS)
 
-A native macOS desktop application for ClarityMelt — infrastructure management with clear connections between machines, domains, and DNS records. Org-scoped encrypted credentials stored locally in SQLite.
+A native macOS desktop application for ClarityMelt — infrastructure management with clear connections between machines, domains, and DNS records. Encrypted credentials stored locally in SQLite.
 
 ## Architecture
 
 This is a **self-contained desktop application** — no separate API server needed. The app directly calls provider APIs (OVH, Hetzner, Namecheap, Cloudflare) and stores all data locally in SQLite.
-
-### Key Differences from the Web App
-
-| Feature | Web App | Desktop App |
-|---------|---------|-------------|
-| Backend | Hono + tRPC + PostgreSQL | Direct API calls + SQLite |
-| Auth | Better Auth (multi-user) | Single-user (no auth) |
-| Database | PostgreSQL (remote) | SQLite (local) |
-| Credentials | Encrypted in DB, env var fallback | Encrypted in local DB, env var fallback |
-| State Management | Preact signals | Riverpod |
-| UI | Preact + Tailwind | Flutter Material 3 |
 
 ### Project Structure
 
@@ -139,7 +128,5 @@ Other design ideas
 
 
 Ssh related
-- https://github.com/LollipopKit/flutter_server_box
-- https://github.com/TerminalStudio
 - https://pub.dev/packages/dartssh2
 - https://github.com/TerminalStudio/xterm.dart
