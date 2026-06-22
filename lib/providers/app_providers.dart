@@ -763,6 +763,51 @@ final uncloudContainersForIpProvider = FutureProvider.family<List<UncloudService
   }
 });
 
+/// List services for a specific UC context.
+final uncloudServicesForContextProvider = FutureProvider.family<List<UncloudRunningService>, String>((ref, contextName) async {
+  final svc = ref.read(uncloudServiceProvider);
+  try {
+    return await svc.listServices(context: contextName);
+  } catch (e, st) {
+    AppLog.warning('Failed to list UC services for context $contextName', e, st);
+    return [];
+  }
+});
+
+/// List machines for a specific UC context.
+final uncloudMachinesForContextProvider = FutureProvider.family<List<UncloudRunningMachine>, String>((ref, contextName) async {
+  final svc = ref.read(uncloudServiceProvider);
+  try {
+    return await svc.listMachines(context: contextName);
+  } catch (e, st) {
+    AppLog.warning('Failed to list UC machines for context $contextName', e, st);
+    return [];
+  }
+});
+
+/// Get cluster domain for a specific UC context.
+final uncloudDomainForContextProvider = FutureProvider.family<String?, String>((ref, contextName) async {
+  final svc = ref.read(uncloudServiceProvider);
+  try {
+    return await svc.getClusterDomain(context: contextName);
+  } catch (e, st) {
+    AppLog.warning('Failed to get UC cluster domain for context $contextName', e, st);
+    return null;
+  }
+});
+
+/// Get containers for a specific IP in a specific UC context.
+final uncloudContainersForIpAndContextProvider = FutureProvider.family<List<UncloudServiceContainer>, (String, String)>((ref, params) async {
+  final (contextName, publicIp) = params;
+  final svc = ref.read(uncloudServiceProvider);
+  try {
+    return await svc.getContainersForIp(publicIp, context: contextName);
+  } catch (e, st) {
+    AppLog.warning('Failed to get UC containers for IP $publicIp in context $contextName', e, st);
+    return [];
+  }
+});
+
 /// Get the cluster domain from `uc dns show`.
 final uncloudClusterDomainProvider = FutureProvider<String?>((ref) async {
   final config = await ref.watch(uncloudConfigProvider.future);

@@ -8,6 +8,7 @@ import '../services/uncloud_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/notes_and_tasks_section.dart';
 import 'ssh_terminal_screen.dart';
+import 'uncloud_context_dialog.dart';
 
 class MachineDetailScreen extends ConsumerStatefulWidget {
   final MachineInfo machine;
@@ -103,6 +104,10 @@ class _MachineDetailScreenState extends ConsumerState<MachineDetailScreen> {
               if (widget.machine.diskGB != null) ...[
                 const SizedBox(width: 12),
                 Expanded(child: StatCard(label: 'DISK', value: '${widget.machine.diskGB} GB')),
+              ],
+              if (widget.machine.monthlyCost != null) ...[
+                const SizedBox(width: 12),
+                Expanded(child: StatCard(label: 'COST', value: widget.machine.monthlyCostLabel, valueColor: AppColors.success)),
               ],
             ],
           ),
@@ -273,6 +278,26 @@ class _StatusHeader extends StatelessWidget {
                               const Icon(Icons.location_on, size: 12, color: AppColors.secondary),
                               const SizedBox(width: 4),
                               Text(machine.region, style: TextStyle(fontSize: 11, fontFamily: AppTheme.bodyFont, color: AppColors.secondary)),
+                            ],
+                          ),
+                        ),
+                      ],
+                      // ── Machine Type Tag ──
+                      if (machine.machineTypeTag != machine.serviceTypeLabel) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(2),
+                            border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.label, size: 12, color: AppColors.primary),
+                              const SizedBox(width: 4),
+                              Text(machine.machineTypeTag, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, fontFamily: AppTheme.bodyFont, color: AppColors.primary)),
                             ],
                           ),
                         ),
@@ -1276,14 +1301,28 @@ class _SshSection extends ConsumerWidget {
                 const Spacer(),
                 FilledButton.icon(
                   onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => SshTerminalScreen(
-                          host: sshHost, // Use OVH hostname when available
-                          username: defaultUser,
-                          sshKeyFile: sshKeyFile,
-                          titleOverride: '$defaultUser@$sshHost',
-                        ),
+                    final outerContext = context;
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => _SshPasswordDialog(
+                        host: sshHost,
+                        username: defaultUser,
+                        sshKeyFile: sshKeyFile,
+                        titleOverride: '$defaultUser@$sshHost',
+                        onConnect: (password) {
+                          Navigator.pop(ctx);
+                          Navigator.of(outerContext).push(
+                            MaterialPageRoute(
+                              builder: (_) => SshTerminalScreen(
+                                host: sshHost,
+                                username: defaultUser,
+                                sshKeyFile: sshKeyFile,
+                                password: password,
+                                titleOverride: '$defaultUser@$sshHost',
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     );
                   },
@@ -1403,8 +1442,15 @@ class _UncloudServicesSection extends ConsumerWidget {
     }
     if (!isUcMachine) return const SizedBox.shrink();
 
-    final containersAsync = ref.watch(uncloudContainersForIpProvider(machine.ipAddresses.firstOrNull ?? ''));
-    final servicesAsync = ref.watch(uncloudRunningServicesProvider);
+    // Determine the machine's UC context for --context flag
+    final machineContext = machine.uncloudContext ?? _resolveMachineContext(config, machine);
+
+    final containersAsync = machineContext != null
+        ? ref.watch(uncloudContainersForIpAndContextProvider((machineContext, machine.ipAddresses.firstOrNull ?? '')))
+        : ref.watch(uncloudContainersForIpProvider(machine.ipAddresses.firstOrNull ?? ''));
+    final servicesAsync = machineContext != null
+        ? ref.watch(uncloudServicesForContextProvider(machineContext))
+        : ref.watch(uncloudRunningServicesProvider);
 
     return Card(
       child: Padding(
@@ -1422,9 +1468,15 @@ class _UncloudServicesSection extends ConsumerWidget {
                   icon: const Icon(Icons.refresh, size: 16),
                   tooltip: 'Refresh services',
                   onPressed: () {
-                    ref.invalidate(uncloudRunningServicesProvider);
-                    ref.invalidate(uncloudContainersForIpProvider(machine.ipAddresses.firstOrNull ?? ''));
-                    ref.invalidate(uncloudRunningMachinesProvider);
+                    if (machineContext != null) {
+                      ref.invalidate(uncloudServicesForContextProvider(machineContext));
+                      ref.invalidate(uncloudContainersForIpAndContextProvider((machineContext, machine.ipAddresses.firstOrNull ?? '')));
+                      ref.invalidate(uncloudMachinesForContextProvider(machineContext));
+                    } else {
+                      ref.invalidate(uncloudRunningServicesProvider);
+                      ref.invalidate(uncloudContainersForIpProvider(machine.ipAddresses.firstOrNull ?? ''));
+                      ref.invalidate(uncloudRunningMachinesProvider);
+                    }
                   },
                 ),
               ],
@@ -1484,7 +1536,7 @@ class _UncloudServicesSection extends ConsumerWidget {
                     )),
 
                     // ── PSQL connect action ──
-                    if (pgServices.isNotEmpty && containersForMachine.isNotEmpty) ...[
+                    if (pgServices.isNotEmpty) ...[
                       const SizedBox(height: 16),
                       const Text('DATABASE ACCESS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.2, fontFamily: AppTheme.displayFont, color: AppColors.secondary)),
                       const SizedBox(height: 8),
@@ -1514,8 +1566,9 @@ class _UncloudServicesSection extends ConsumerWidget {
                               const SizedBox(width: 8),
                               FilledButton.icon(
                                 onPressed: () {
-                                  final contextName = config.currentContext;
-                                  _openPsqlTerminal(context, ref, pgSvc.name, contextName);
+                                  // Use the machine's assigned context, or fall back to active context
+                                  final ucContext = machineContext ?? config.currentContext;
+                                  _openPsqlTerminal(context, ref, pgSvc.name, ucContext);
                                 },
                                 icon: const Icon(Icons.terminal, size: 16),
                                 label: const Text('PSQL'),
@@ -1541,16 +1594,51 @@ class _UncloudServicesSection extends ConsumerWidget {
     );
   }
 
-  void _openPsqlTerminal(BuildContext context, WidgetRef ref, String serviceName, String contextName) {
-    // Build the uc exec command: uc exec <service> psql -U postgres
-    final cmd = ['uc', '--context', contextName, 'exec', serviceName, 'psql', '-U', 'postgres'];
+  /// Resolve the Uncloud context name for this machine from the config.
+  /// Checks machine.uncloudContext first, then matches by IP/hostname.
+  static String? _resolveMachineContext(UncloudConfig config, MachineInfo machine) {
+    // 1. Explicit assignment from DB
+    if (machine.uncloudContext != null && machine.uncloudContext!.isNotEmpty) {
+      return machine.uncloudContext;
+    }
+    // 2. Match by machine ID
+    if (machine.uncloudMachineId != null) {
+      final ctx = config.contextForMachineId(machine.uncloudMachineId!);
+      if (ctx != null) return ctx.name;
+    }
+    // 3. Match by IP
+    for (final ctx in config.contexts.values) {
+      for (final conn in ctx.connections) {
+        for (final ip in machine.ipAddresses) {
+          if (conn.sshTarget.contains(ip)) {
+            return ctx.name;
+          }
+        }
+      }
+    }
+    // 4. Match by hostname
+    for (final ctx in config.contexts.values) {
+      for (final conn in ctx.connections) {
+        if (conn.sshTarget.contains(machine.name)) {
+          return ctx.name;
+        }
+      }
+    }
+    return null;
+  }
+
+  void _openPsqlTerminal(BuildContext context, WidgetRef ref, String serviceName, String? contextName) {
+    // Build the uc exec command: uc --context <context> exec <service> psql -U postgres
+    final cmd = contextName != null
+        ? ['uc', '--context', contextName, 'exec', serviceName, 'psql', '-U', 'postgres']
+        : ['uc', 'exec', serviceName, 'psql', '-U', 'postgres'];
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => SshTerminalScreen(
           host: '', // Not used for local commands
           username: '',
           localCommand: cmd,
-          titleOverride: 'psql://$serviceName',
+          titleOverride: 'psql://$serviceName${contextName != null ? " [$contextName]" : ""}',
         ),
       ),
     );
@@ -1880,6 +1968,9 @@ class _UncloudSection extends ConsumerWidget {
           const SizedBox(height: 12),
         ],
 
+        // ── Assign UC Context ──
+        _buildAssignContextSection(context, ref, config),
+
         // ── Cluster info with validation ──
         if (activeContext != null) ...[
           Row(
@@ -1888,7 +1979,18 @@ class _UncloudSection extends ConsumerWidget {
               const SizedBox(width: 6),
               const Text('CLUSTER', style: AppTheme.labelStyle),
               const SizedBox(width: 8),
-              CodeBlock(text: activeContext.name),
+              InkWell(
+                onTap: () => _showContextDetail(context, ref, activeContext.name, activeContext, true),
+                borderRadius: BorderRadius.circular(2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CodeBlock(text: activeContext.name),
+                    const SizedBox(width: 4),
+                    Icon(Icons.open_in_new, size: 11, color: AppColors.tertiary.withValues(alpha: 0.7)),
+                  ],
+                ),
+              ),
               const SizedBox(width: 8),
               Text('${activeContext.connections.length} connection${activeContext.connections.length != 1 ? 's' : ''}',
                   style: TextStyle(fontSize: 12, color: AppColors.secondary, fontFamily: AppTheme.bodyFont)),
@@ -1920,10 +2022,26 @@ class _UncloudSection extends ConsumerWidget {
               const SizedBox(width: 6),
               const Text('CLUSTER', style: AppTheme.labelStyle),
               const SizedBox(width: 8),
-              ...matchedContextNames.map((name) => Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: CodeBlock(text: name),
-              )),
+              ...matchedContextNames.map((name) {
+                final ctx = config.contexts[name];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: InkWell(
+                    onTap: ctx != null ? () => _showContextDetail(context, ref, name, ctx, name == config.currentContext) : null,
+                    borderRadius: BorderRadius.circular(2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CodeBlock(text: name),
+                        if (ctx != null) ...[
+                          const SizedBox(width: 2),
+                          Icon(Icons.open_in_new, size: 10, color: AppColors.warning.withValues(alpha: 0.7)),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              }),
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -2014,6 +2132,152 @@ class _UncloudSection extends ConsumerWidget {
     );
   }
 
+  Widget _buildAssignContextSection(BuildContext context, WidgetRef ref, UncloudConfig config) {
+    final contexts = config.contexts.keys.toList();
+    if (contexts.isEmpty) return const SizedBox.shrink();
+
+    // Find which context this machine belongs to (if any)
+    final currentContext = machine.uncloudContext;
+    // Also check config-based matching
+    final matchedContext = config.contextForMachineId(machine.uncloudMachineId ?? '');
+    final displayContext = currentContext ?? matchedContext?.name;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.alt_route, size: 14, color: AppColors.tertiary),
+            const SizedBox(width: 6),
+            const Text('ASSIGN CONTEXT', style: AppTheme.labelStyle),
+            const Spacer(),
+            if (displayContext != null) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.check_circle, size: 12, color: AppColors.success),
+                    const SizedBox(width: 4),
+                    Text(displayContext, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.success, fontFamily: AppTheme.bodyFont)),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: contexts.map((ctxName) {
+            final isAssigned = ctxName == displayContext;
+            final isCurrent = ctxName == config.currentContext;
+            return InkWell(
+              onTap: () => _assignContext(context, ref, ctxName),
+              borderRadius: BorderRadius.circular(4),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isAssigned
+                      ? AppColors.tertiary.withValues(alpha: 0.15)
+                      : AppColors.surfaceVariant,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                    color: isAssigned
+                        ? AppColors.tertiary
+                        : isCurrent
+                            ? AppColors.success.withValues(alpha: 0.3)
+                            : AppColors.outline,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(isAssigned ? Icons.check_circle : (isCurrent ? Icons.circle : Icons.circle_outlined),
+                        size: 14, color: isAssigned ? AppColors.tertiary : (isCurrent ? AppColors.success : AppColors.secondary)),
+                    const SizedBox(width: 6),
+                    Text(ctxName, style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isAssigned ? FontWeight.w700 : FontWeight.w500,
+                      color: isAssigned ? AppColors.tertiary : AppColors.primary,
+                      fontFamily: AppTheme.bodyFont,
+                    )),
+                    if (isCurrent) ...[
+                      const SizedBox(width: 4),
+                      Text('active', style: TextStyle(fontSize: 9, color: AppColors.success.withValues(alpha: 0.7), fontFamily: AppTheme.bodyFont)),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        if (displayContext != null) ...[
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: () => _clearContext(context, ref),
+            icon: const Icon(Icons.clear, size: 14),
+            label: const Text('Clear assignment'),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.danger,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              textStyle: TextStyle(fontSize: 11, fontFamily: AppTheme.bodyFont),
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  Future<void> _assignContext(BuildContext context, WidgetRef ref, String contextName) async {
+    try {
+      final db = ref.read(databaseProvider);
+      await db.cachedMachineDao.setUncloudId(machine.id, machine.uncloudMachineId, contextName);
+      // Refresh providers to reflect changes
+      ref.invalidate(machinesProvider);
+      ref.invalidate(machineAliasesProvider);
+      ref.invalidate(uncloudSyncProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Assigned to UC context: $contextName')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to assign context: $e'), backgroundColor: AppColors.danger),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearContext(BuildContext context, WidgetRef ref) async {
+    try {
+      final db = ref.read(databaseProvider);
+      await db.cachedMachineDao.setUncloudId(machine.id, null, null);
+      ref.invalidate(machinesProvider);
+      ref.invalidate(machineAliasesProvider);
+      ref.invalidate(uncloudSyncProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cleared UC context assignment')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to clear context: $e'), backgroundColor: AppColors.danger),
+        );
+      }
+    }
+  }
+
   IconData _connectionTypeIcon(String typeLabel) {
     switch (typeLabel) {
       case 'SSH':
@@ -2027,6 +2291,11 @@ class _UncloudSection extends ConsumerWidget {
       default:
         return Icons.link;
     }
+  }
+
+  /// Show a dialog with context details: services, machines, domain.
+  void _showContextDetail(BuildContext context, WidgetRef ref, String contextName, UncloudContext ctx, bool isActive) {
+    showUncloudContextDetailDialog(context: context, contextName: contextName, ctx: ctx, isActive: isActive);
   }
 
   void _showUncloudInfoDialog(BuildContext context) {
@@ -2118,6 +2387,112 @@ class _ServiceTypeStatCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Dialog shown before opening an SSH terminal, allowing the user
+/// to optionally enter a password for authentication.
+class _SshPasswordDialog extends StatefulWidget {
+  final String host;
+  final String username;
+  final String? sshKeyFile;
+  final String titleOverride;
+  final void Function(String? password) onConnect;
+
+  const _SshPasswordDialog({
+    required this.host,
+    required this.username,
+    this.sshKeyFile,
+    required this.titleOverride,
+    required this.onConnect,
+  });
+
+  @override
+  State<_SshPasswordDialog> createState() => _SshPasswordDialogState();
+}
+
+class _SshPasswordDialogState extends State<_SshPasswordDialog> {
+  final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(
+        children: [
+          const Icon(Icons.terminal, size: 20, color: AppColors.tertiary),
+          const SizedBox(width: 8),
+          const Text('SSH Authentication', style: TextStyle(fontFamily: AppTheme.displayFont, fontSize: 16)),
+        ],
+      ),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Connect to ${widget.username}@${widget.host}',
+              style: TextStyle(fontSize: 13, color: AppColors.secondary.withValues(alpha: 0.7), fontFamily: AppTheme.bodyFont),
+            ),
+            if (widget.sshKeyFile != null) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.vpn_key, size: 14, color: AppColors.success),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Key: ${widget.sshKeyFile}',
+                      style: TextStyle(fontSize: 12, color: AppColors.success, fontFamily: AppTheme.bodyFont),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 16),
+            TextField(
+              controller: _passwordController,
+              obscureText: _obscurePassword,
+              decoration: InputDecoration(
+                labelText: 'Password (optional)',
+                hintText: 'Leave empty for key-based auth',
+                suffixIcon: IconButton(
+                  icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, size: 18),
+                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'If SSH key authentication fails, the password will be used as a fallback.',
+              style: TextStyle(fontSize: 11, color: AppColors.secondary.withValues(alpha: 0.6), fontFamily: AppTheme.bodyFont),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          onPressed: () {
+            final password = _passwordController.text.isEmpty ? null : _passwordController.text;
+            widget.onConnect(password);
+          },
+          icon: const Icon(Icons.terminal, size: 16),
+          label: const Text('CONNECT'),
+        ),
+      ],
     );
   }
 }

@@ -549,6 +549,28 @@ class $CachedMachinesTable extends CachedMachines
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _monthlyCostMeta = const VerificationMeta(
+    'monthlyCost',
+  );
+  @override
+  late final GeneratedColumn<double> monthlyCost = GeneratedColumn<double>(
+    'monthly_cost',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _currencyMeta = const VerificationMeta(
+    'currency',
+  );
+  @override
+  late final GeneratedColumn<String> currency = GeneratedColumn<String>(
+    'currency',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _lastSyncedAtMeta = const VerificationMeta(
     'lastSyncedAt',
   );
@@ -600,6 +622,8 @@ class $CachedMachinesTable extends CachedMachines
     raw,
     uncloudMachineId,
     uncloudContext,
+    monthlyCost,
+    currency,
     lastSyncedAt,
     createdAt,
     updatedAt,
@@ -708,6 +732,21 @@ class $CachedMachinesTable extends CachedMachines
         ),
       );
     }
+    if (data.containsKey('monthly_cost')) {
+      context.handle(
+        _monthlyCostMeta,
+        monthlyCost.isAcceptableOrUnknown(
+          data['monthly_cost']!,
+          _monthlyCostMeta,
+        ),
+      );
+    }
+    if (data.containsKey('currency')) {
+      context.handle(
+        _currencyMeta,
+        currency.isAcceptableOrUnknown(data['currency']!, _currencyMeta),
+      );
+    }
     if (data.containsKey('last_synced_at')) {
       context.handle(
         _lastSyncedAtMeta,
@@ -790,6 +829,14 @@ class $CachedMachinesTable extends CachedMachines
         DriftSqlType.string,
         data['${effectivePrefix}uncloud_context'],
       ),
+      monthlyCost: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}monthly_cost'],
+      ),
+      currency: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}currency'],
+      ),
       lastSyncedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_synced_at'],
@@ -825,6 +872,8 @@ class CachedMachine extends DataClass implements Insertable<CachedMachine> {
   final String? raw;
   final String? uncloudMachineId;
   final String? uncloudContext;
+  final double? monthlyCost;
+  final String? currency;
   final DateTime lastSyncedAt;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -842,6 +891,8 @@ class CachedMachine extends DataClass implements Insertable<CachedMachine> {
     this.raw,
     this.uncloudMachineId,
     this.uncloudContext,
+    this.monthlyCost,
+    this.currency,
     required this.lastSyncedAt,
     required this.createdAt,
     required this.updatedAt,
@@ -874,6 +925,12 @@ class CachedMachine extends DataClass implements Insertable<CachedMachine> {
     if (!nullToAbsent || uncloudContext != null) {
       map['uncloud_context'] = Variable<String>(uncloudContext);
     }
+    if (!nullToAbsent || monthlyCost != null) {
+      map['monthly_cost'] = Variable<double>(monthlyCost);
+    }
+    if (!nullToAbsent || currency != null) {
+      map['currency'] = Variable<String>(currency);
+    }
     map['last_synced_at'] = Variable<DateTime>(lastSyncedAt);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -905,6 +962,12 @@ class CachedMachine extends DataClass implements Insertable<CachedMachine> {
       uncloudContext: uncloudContext == null && nullToAbsent
           ? const Value.absent()
           : Value(uncloudContext),
+      monthlyCost: monthlyCost == null && nullToAbsent
+          ? const Value.absent()
+          : Value(monthlyCost),
+      currency: currency == null && nullToAbsent
+          ? const Value.absent()
+          : Value(currency),
       lastSyncedAt: Value(lastSyncedAt),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -930,6 +993,8 @@ class CachedMachine extends DataClass implements Insertable<CachedMachine> {
       raw: serializer.fromJson<String?>(json['raw']),
       uncloudMachineId: serializer.fromJson<String?>(json['uncloudMachineId']),
       uncloudContext: serializer.fromJson<String?>(json['uncloudContext']),
+      monthlyCost: serializer.fromJson<double?>(json['monthlyCost']),
+      currency: serializer.fromJson<String?>(json['currency']),
       lastSyncedAt: serializer.fromJson<DateTime>(json['lastSyncedAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -952,6 +1017,8 @@ class CachedMachine extends DataClass implements Insertable<CachedMachine> {
       'raw': serializer.toJson<String?>(raw),
       'uncloudMachineId': serializer.toJson<String?>(uncloudMachineId),
       'uncloudContext': serializer.toJson<String?>(uncloudContext),
+      'monthlyCost': serializer.toJson<double?>(monthlyCost),
+      'currency': serializer.toJson<String?>(currency),
       'lastSyncedAt': serializer.toJson<DateTime>(lastSyncedAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -972,6 +1039,8 @@ class CachedMachine extends DataClass implements Insertable<CachedMachine> {
     Value<String?> raw = const Value.absent(),
     Value<String?> uncloudMachineId = const Value.absent(),
     Value<String?> uncloudContext = const Value.absent(),
+    Value<double?> monthlyCost = const Value.absent(),
+    Value<String?> currency = const Value.absent(),
     DateTime? lastSyncedAt,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -993,6 +1062,8 @@ class CachedMachine extends DataClass implements Insertable<CachedMachine> {
     uncloudContext: uncloudContext.present
         ? uncloudContext.value
         : this.uncloudContext,
+    monthlyCost: monthlyCost.present ? monthlyCost.value : this.monthlyCost,
+    currency: currency.present ? currency.value : this.currency,
     lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -1020,6 +1091,10 @@ class CachedMachine extends DataClass implements Insertable<CachedMachine> {
       uncloudContext: data.uncloudContext.present
           ? data.uncloudContext.value
           : this.uncloudContext,
+      monthlyCost: data.monthlyCost.present
+          ? data.monthlyCost.value
+          : this.monthlyCost,
+      currency: data.currency.present ? data.currency.value : this.currency,
       lastSyncedAt: data.lastSyncedAt.present
           ? data.lastSyncedAt.value
           : this.lastSyncedAt,
@@ -1044,6 +1119,8 @@ class CachedMachine extends DataClass implements Insertable<CachedMachine> {
           ..write('raw: $raw, ')
           ..write('uncloudMachineId: $uncloudMachineId, ')
           ..write('uncloudContext: $uncloudContext, ')
+          ..write('monthlyCost: $monthlyCost, ')
+          ..write('currency: $currency, ')
           ..write('lastSyncedAt: $lastSyncedAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -1066,6 +1143,8 @@ class CachedMachine extends DataClass implements Insertable<CachedMachine> {
     raw,
     uncloudMachineId,
     uncloudContext,
+    monthlyCost,
+    currency,
     lastSyncedAt,
     createdAt,
     updatedAt,
@@ -1087,6 +1166,8 @@ class CachedMachine extends DataClass implements Insertable<CachedMachine> {
           other.raw == this.raw &&
           other.uncloudMachineId == this.uncloudMachineId &&
           other.uncloudContext == this.uncloudContext &&
+          other.monthlyCost == this.monthlyCost &&
+          other.currency == this.currency &&
           other.lastSyncedAt == this.lastSyncedAt &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -1106,6 +1187,8 @@ class CachedMachinesCompanion extends UpdateCompanion<CachedMachine> {
   final Value<String?> raw;
   final Value<String?> uncloudMachineId;
   final Value<String?> uncloudContext;
+  final Value<double?> monthlyCost;
+  final Value<String?> currency;
   final Value<DateTime> lastSyncedAt;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -1124,6 +1207,8 @@ class CachedMachinesCompanion extends UpdateCompanion<CachedMachine> {
     this.raw = const Value.absent(),
     this.uncloudMachineId = const Value.absent(),
     this.uncloudContext = const Value.absent(),
+    this.monthlyCost = const Value.absent(),
+    this.currency = const Value.absent(),
     this.lastSyncedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -1143,6 +1228,8 @@ class CachedMachinesCompanion extends UpdateCompanion<CachedMachine> {
     this.raw = const Value.absent(),
     this.uncloudMachineId = const Value.absent(),
     this.uncloudContext = const Value.absent(),
+    this.monthlyCost = const Value.absent(),
+    this.currency = const Value.absent(),
     this.lastSyncedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -1165,6 +1252,8 @@ class CachedMachinesCompanion extends UpdateCompanion<CachedMachine> {
     Expression<String>? raw,
     Expression<String>? uncloudMachineId,
     Expression<String>? uncloudContext,
+    Expression<double>? monthlyCost,
+    Expression<String>? currency,
     Expression<DateTime>? lastSyncedAt,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -1184,6 +1273,8 @@ class CachedMachinesCompanion extends UpdateCompanion<CachedMachine> {
       if (raw != null) 'raw': raw,
       if (uncloudMachineId != null) 'uncloud_machine_id': uncloudMachineId,
       if (uncloudContext != null) 'uncloud_context': uncloudContext,
+      if (monthlyCost != null) 'monthly_cost': monthlyCost,
+      if (currency != null) 'currency': currency,
       if (lastSyncedAt != null) 'last_synced_at': lastSyncedAt,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -1205,6 +1296,8 @@ class CachedMachinesCompanion extends UpdateCompanion<CachedMachine> {
     Value<String?>? raw,
     Value<String?>? uncloudMachineId,
     Value<String?>? uncloudContext,
+    Value<double?>? monthlyCost,
+    Value<String?>? currency,
     Value<DateTime>? lastSyncedAt,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -1224,6 +1317,8 @@ class CachedMachinesCompanion extends UpdateCompanion<CachedMachine> {
       raw: raw ?? this.raw,
       uncloudMachineId: uncloudMachineId ?? this.uncloudMachineId,
       uncloudContext: uncloudContext ?? this.uncloudContext,
+      monthlyCost: monthlyCost ?? this.monthlyCost,
+      currency: currency ?? this.currency,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -1273,6 +1368,12 @@ class CachedMachinesCompanion extends UpdateCompanion<CachedMachine> {
     if (uncloudContext.present) {
       map['uncloud_context'] = Variable<String>(uncloudContext.value);
     }
+    if (monthlyCost.present) {
+      map['monthly_cost'] = Variable<double>(monthlyCost.value);
+    }
+    if (currency.present) {
+      map['currency'] = Variable<String>(currency.value);
+    }
     if (lastSyncedAt.present) {
       map['last_synced_at'] = Variable<DateTime>(lastSyncedAt.value);
     }
@@ -1304,6 +1405,8 @@ class CachedMachinesCompanion extends UpdateCompanion<CachedMachine> {
           ..write('raw: $raw, ')
           ..write('uncloudMachineId: $uncloudMachineId, ')
           ..write('uncloudContext: $uncloudContext, ')
+          ..write('monthlyCost: $monthlyCost, ')
+          ..write('currency: $currency, ')
           ..write('lastSyncedAt: $lastSyncedAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -5068,6 +5171,8 @@ typedef $$CachedMachinesTableCreateCompanionBuilder =
       Value<String?> raw,
       Value<String?> uncloudMachineId,
       Value<String?> uncloudContext,
+      Value<double?> monthlyCost,
+      Value<String?> currency,
       Value<DateTime> lastSyncedAt,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -5088,6 +5193,8 @@ typedef $$CachedMachinesTableUpdateCompanionBuilder =
       Value<String?> raw,
       Value<String?> uncloudMachineId,
       Value<String?> uncloudContext,
+      Value<double?> monthlyCost,
+      Value<String?> currency,
       Value<DateTime> lastSyncedAt,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -5165,6 +5272,16 @@ class $$CachedMachinesTableFilterComposer
 
   ColumnFilters<String> get uncloudContext => $composableBuilder(
     column: $table.uncloudContext,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get monthlyCost => $composableBuilder(
+    column: $table.monthlyCost,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get currency => $composableBuilder(
+    column: $table.currency,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5258,6 +5375,16 @@ class $$CachedMachinesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get monthlyCost => $composableBuilder(
+    column: $table.monthlyCost,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get currency => $composableBuilder(
+    column: $table.currency,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get lastSyncedAt => $composableBuilder(
     column: $table.lastSyncedAt,
     builder: (column) => ColumnOrderings(column),
@@ -5330,6 +5457,14 @@ class $$CachedMachinesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<double> get monthlyCost => $composableBuilder(
+    column: $table.monthlyCost,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get currency =>
+      $composableBuilder(column: $table.currency, builder: (column) => column);
+
   GeneratedColumn<DateTime> get lastSyncedAt => $composableBuilder(
     column: $table.lastSyncedAt,
     builder: (column) => column,
@@ -5388,6 +5523,8 @@ class $$CachedMachinesTableTableManager
                 Value<String?> raw = const Value.absent(),
                 Value<String?> uncloudMachineId = const Value.absent(),
                 Value<String?> uncloudContext = const Value.absent(),
+                Value<double?> monthlyCost = const Value.absent(),
+                Value<String?> currency = const Value.absent(),
                 Value<DateTime> lastSyncedAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -5406,6 +5543,8 @@ class $$CachedMachinesTableTableManager
                 raw: raw,
                 uncloudMachineId: uncloudMachineId,
                 uncloudContext: uncloudContext,
+                monthlyCost: monthlyCost,
+                currency: currency,
                 lastSyncedAt: lastSyncedAt,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -5426,6 +5565,8 @@ class $$CachedMachinesTableTableManager
                 Value<String?> raw = const Value.absent(),
                 Value<String?> uncloudMachineId = const Value.absent(),
                 Value<String?> uncloudContext = const Value.absent(),
+                Value<double?> monthlyCost = const Value.absent(),
+                Value<String?> currency = const Value.absent(),
                 Value<DateTime> lastSyncedAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -5444,6 +5585,8 @@ class $$CachedMachinesTableTableManager
                 raw: raw,
                 uncloudMachineId: uncloudMachineId,
                 uncloudContext: uncloudContext,
+                monthlyCost: monthlyCost,
+                currency: currency,
                 lastSyncedAt: lastSyncedAt,
                 createdAt: createdAt,
                 updatedAt: updatedAt,

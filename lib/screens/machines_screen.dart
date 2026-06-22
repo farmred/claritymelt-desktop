@@ -113,7 +113,7 @@ class MachinesScreen extends ConsumerWidget {
   }
 }
 
-class _MachineCard extends StatelessWidget {
+class _MachineCard extends ConsumerWidget {
   final MachineInfo machine;
   final List<DnsRecordInfo> dnsRecords;
   final VoidCallback? onNavigateToDns;
@@ -121,7 +121,14 @@ class _MachineCard extends StatelessWidget {
   const _MachineCard({required this.machine, required this.dnsRecords, this.onNavigateToDns});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final aliases = ref.watch(machineAliasesProvider);
+    final alias = aliases[machine.id] ?? machine.alias ?? '';
+    final productsAsync = ref.watch(productsProvider);
+    final products = productsAsync.value ?? [];
+    final machineProducts = products.where((p) => p.resources.any((r) => r.resourceType == 'machine' && r.resourceId == machine.id)).toList();
+    final productNames = machineProducts.map((p) => p.name).toList();
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Card(
@@ -171,6 +178,17 @@ class _MachineCard extends StatelessWidget {
                               ],
                             ),
                           ),
+                          if (alias.isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: AppColors.tertiary.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                              child: Text(alias, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.tertiary, fontFamily: AppTheme.bodyFont)),
+                            ),
+                          ],
                           const SizedBox(width: 8),
                           AppTheme.providerBadge(machine.provider),
                           const SizedBox(width: 8),
@@ -185,6 +203,22 @@ class _MachineCard extends StatelessWidget {
                               style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.5, color: AppColors.secondary, fontFamily: AppTheme.bodyFont),
                             ),
                           ),
+                          if (machine.flavor != null || machine.commercialRange != null) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(2),
+                                border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                              ),
+                              child: Text(
+                                machine.machineTypeTag,
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.primary, fontFamily: AppTheme.bodyFont),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -206,6 +240,31 @@ class _MachineCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 12),
+
+                      // ── Products ──
+                      if (productNames.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            const Icon(Icons.folder_special, size: 14, color: AppColors.tertiary),
+                            const SizedBox(width: 4),
+                            Flexible(child: Text(productNames.join(', '), style: TextStyle(fontSize: 12, color: AppColors.tertiary, fontFamily: AppTheme.bodyFont, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+
+                      // ── UC Context ──
+                      if (machine.uncloudContext != null && machine.uncloudContext!.isNotEmpty) ...[
+                        Row(
+                          children: [
+                            const Icon(Icons.cloud_outlined, size: 14, color: AppColors.success),
+                            const SizedBox(width: 4),
+                            Text('UC: ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.success, fontFamily: AppTheme.bodyFont)),
+                            Flexible(child: Text(machine.uncloudContext!, style: TextStyle(fontSize: 12, color: AppColors.success, fontFamily: AppTheme.bodyFont), overflow: TextOverflow.ellipsis)),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                      ],
 
                       // ── Service type + specs ──
                       if (machine.hasSpecs || machine.serviceTypeLabel.isNotEmpty) ...[
@@ -229,6 +288,28 @@ class _MachineCard extends StatelessWidget {
                                 child: Text(
                                   machine.specsSummary,
                                   style: TextStyle(fontSize: 11, fontFamily: AppTheme.bodyFont, color: AppColors.tertiary, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
+                            if (machine.monthlyCost != null) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.success.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(2),
+                                  border: Border.all(color: AppColors.success.withValues(alpha: 0.25)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.payments, size: 11, color: AppColors.success),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      machine.monthlyCostLabel,
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.success, fontFamily: AppTheme.bodyFont),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],

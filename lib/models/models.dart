@@ -25,6 +25,9 @@ class MachineInfo {
   // Uncloud association (persisted in DB)
   final String? uncloudMachineId;
   final String? uncloudContext;
+  // Cost (monthly, in the provider's currency)
+  final double? monthlyCost;
+  final String? currency;
 
   MachineInfo({
     required this.id,
@@ -46,6 +49,8 @@ class MachineInfo {
     this.raw,
     this.uncloudMachineId,
     this.uncloudContext,
+    this.monthlyCost,
+    this.currency,
   });
 
   /// Display name: alias if set, otherwise the provider name.
@@ -117,6 +122,52 @@ class MachineInfo {
   /// Whether this machine has any hardware spec data.
   bool get hasSpecs =>
       vcpus != null || memoryMB != null || diskGB != null || bandwidth != null;
+
+  /// Machine type tag derived from provider + specs.
+  /// Returns a short descriptive label like "VPS", "Dedicated", "Cloud Instance",
+  /// "Hetzner CX", etc. based on provider and flavor/type info.
+  String get machineTypeTag {
+    switch (provider) {
+      case 'ovh-vps':
+        if (flavor != null && flavor!.isNotEmpty) return 'VPS ($flavor)';
+        return 'VPS';
+      case 'ovh-dedicated':
+        if (commercialRange != null && commercialRange!.isNotEmpty) return 'Dedicated ($commercialRange)';
+        return 'Dedicated';
+      case 'ovh':
+        if (flavor != null && flavor!.isNotEmpty) return 'Cloud ($flavor)';
+        return 'Cloud Instance';
+      case 'hetzner':
+        if (flavor != null && flavor!.isNotEmpty) return 'Hetzner ($flavor)';
+        return 'Hetzner Cloud';
+      default:
+        return providerLabel;
+    }
+  }
+
+  /// Short machine type tag without parenthetical details.
+  String get machineTypeShort {
+    switch (provider) {
+      case 'ovh-vps':
+        return 'VPS';
+      case 'ovh-dedicated':
+        return 'Dedicated';
+      case 'ovh':
+        return 'Cloud';
+      case 'hetzner':
+        return 'Hetzner';
+      default:
+        return providerLabel;
+    }
+  }
+
+  /// Formatted monthly cost string, e.g. "€4.50/mo" or "$3.99/mo".
+  String get monthlyCostLabel {
+    if (monthlyCost == null) return '';
+    final cur = currency ?? 'EUR';
+    final symbol = cur == 'USD' ? '\$' : cur == 'GBP' ? '£' : '€';
+    return '$symbol${monthlyCost!.toStringAsFixed(monthlyCost! == monthlyCost!.roundToDouble() ? 0 : 2)}/mo';
+  }
 }
 
 class DomainInfo {
