@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/models.dart';
-import '../models/product_models.dart';
 import '../providers/app_providers.dart';
 import '../theme/app_theme.dart';
 import 'machine_detail_screen.dart';
@@ -15,6 +14,16 @@ class DnsManagerScreen extends ConsumerStatefulWidget {
 }
 
 class _DnsManagerScreenState extends ConsumerState<DnsManagerScreen> {
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+  int _filterIndex = 0; // 0 = All, 1 = Active, 2 = Inactive
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final domainsAsync = ref.watch(domainsProvider);
@@ -42,26 +51,89 @@ class _DnsManagerScreenState extends ConsumerState<DnsManagerScreen> {
           // Domain list sidebar
           SizedBox(
             width: 280,
-            child: _DomainSidebar(domainsAsync: domainsAsync, selectedDomain: selectedDomain),
+            child: _DomainSidebar(domainsAsync: domainsAsync, selectedDomain: selectedDomain, searchQuery: _searchQuery, filterIndex: _filterIndex),
           ),
           const VerticalDivider(thickness: 1, width: 1),
           // DNS records content
           Expanded(
-            child: selectedDomain == null
-                ? const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.dns, size: 64, color: AppColors.outline),
-                        SizedBox(height: 16),
-                        Text('Select a domain to view its DNS records', style: TextStyle(color: AppColors.secondary)),
-                      ],
-                    ),
-                  )
-                : _DnsRecordsPanel(
-                    domain: selectedDomain,
-                    recordsAsync: recordsAsync,
+            child: Column(
+              children: [
+                // ── Filter chips + Search bar ──
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+                  child: Row(
+                    children: [
+                      ChoiceChip(
+                        label: const Text('All'),
+                        selected: _filterIndex == 0,
+                        onSelected: (_) => setState(() => _filterIndex = 0),
+                        selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                      ),
+                      const SizedBox(width: 6),
+                      ChoiceChip(
+                        label: const Text('Active'),
+                        selected: _filterIndex == 1,
+                        onSelected: (_) => setState(() => _filterIndex = 1),
+                        selectedColor: AppColors.success.withValues(alpha: 0.15),
+                      ),
+                      const SizedBox(width: 6),
+                      ChoiceChip(
+                        label: const Text('Inactive'),
+                        selected: _filterIndex == 2,
+                        onSelected: (_) => setState(() => _filterIndex = 2),
+                        selectedColor: AppColors.warning.withValues(alpha: 0.15),
+                      ),
+                      const Spacer(),
+                    ],
                   ),
+                ),
+                // ── Search bar ──
+                if (selectedDomain != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Filter DNS records by name, type, IP, or machine...',
+                        hintStyle: TextStyle(color: AppColors.secondary.withValues(alpha: 0.4), fontFamily: AppTheme.bodyFont, fontSize: 12),
+                        prefixIcon: const Icon(Icons.search, size: 16, color: AppColors.secondary),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 16),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                              )
+                            : null,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      style: TextStyle(fontSize: 12, fontFamily: AppTheme.bodyFont, color: AppColors.primary),
+                      onChanged: (value) => setState(() => _searchQuery = value.toLowerCase().trim()),
+                    ),
+                  ),
+                // ── DNS records panel ──
+                Expanded(
+                  child: selectedDomain == null
+                      ? const Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.dns, size: 64, color: AppColors.outline),
+                              SizedBox(height: 16),
+                              Text('Select a domain to view its DNS records', style: TextStyle(color: AppColors.secondary)),
+                            ],
+                          ),
+                        )
+                      : _DnsRecordsPanel(
+                          domain: selectedDomain,
+                          recordsAsync: recordsAsync,
+                          searchQuery: _searchQuery,
+                        ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -69,14 +141,16 @@ class _DnsManagerScreenState extends ConsumerState<DnsManagerScreen> {
   }
 }
 
-class _DomainSidebar extends StatelessWidget {
+class _DomainSidebar extends ConsumerWidget {
   final AsyncValue<List<DomainInfo>> domainsAsync;
   final DomainInfo? selectedDomain;
+  final String searchQuery;
+  final int filterIndex; // 0 = All, 1 = Active, 2 = Inactive
 
-  const _DomainSidebar({required this.domainsAsync, required this.selectedDomain});
+  const _DomainSidebar({required this.domainsAsync, required this.selectedDomain, this.searchQuery = '', this.filterIndex = 0});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       color: AppColors.surface,
       child: Column(
@@ -101,8 +175,34 @@ class _DomainSidebar extends StatelessWidget {
               ),
               data: (domains) {
                 // Only show domains that can manage DNS
-                final manageableDomains = domains.where((d) => d.canManageDns).toList();
+                var manageableDomains = domains.where((d) => d.canManageDns).toList();
                 final nonManageable = domains.where((d) => !d.canManageDns).toList();
+
+                // ── Apply inactive filter ──
+                // "Inactive" = NS not pointing to Cloudflare AND no CNAME for CF
+                //   - Nameserver mismatch on a Cloudflare-managed domain (NS don't point to CF)
+                //   - Or domain not using Cloudflare DNS at all (no CF CNAME possible)
+                if (filterIndex == 1) {
+                  // Active: Cloudflare DNS with correct nameservers
+                  manageableDomains = manageableDomains.where((d) =>
+                    d.effectiveDnsProvider == 'cloudflare' && !d.nameserverMismatch
+                  ).toList();
+                } else if (filterIndex == 2) {
+                  // Inactive: NS mismatch or not on Cloudflare DNS
+                  manageableDomains = manageableDomains.where((d) =>
+                    d.nameserverMismatch || d.effectiveDnsProvider != 'cloudflare'
+                  ).toList();
+                }
+
+                // Apply search filter
+                if (searchQuery.isNotEmpty) {
+                  final q = searchQuery;
+                  manageableDomains = manageableDomains.where((d) =>
+                    d.name.toLowerCase().contains(q) ||
+                    d.provider.toLowerCase().contains(q) ||
+                    d.effectiveDnsProvider.toLowerCase().contains(q)
+                  ).toList();
+                }
 
                 if (domains.isEmpty) {
                   return const Center(
@@ -178,6 +278,8 @@ class _DomainTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final providerColor = AppTheme.providerColor(domain.effectiveDnsProvider);
+    // A domain is "inactive" if NS mismatch or not using Cloudflare DNS
+    final isInactive = domain.nameserverMismatch || domain.effectiveDnsProvider != 'cloudflare';
 
     return ListTile(
       dense: true,
@@ -202,6 +304,17 @@ class _DomainTile extends ConsumerWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          if (isInactive && !disabled) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.warning_amber, size: 10, color: AppColors.warning),
+            ),
+            const SizedBox(width: 4),
+          ],
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
             decoration: BoxDecoration(
@@ -217,9 +330,22 @@ class _DomainTile extends ConsumerWidget {
       ),
       subtitle: disabled
           ? const Text('No DNS API access', style: TextStyle(fontSize: 10, color: AppColors.secondary))
-          : Text(
-              domain.effectiveDnsProvider == 'cloudflare' ? 'Cloudflare zone' : '${domain.effectiveDnsProvider.toUpperCase()} zone',
-              style: const TextStyle(fontSize: 10, color: AppColors.secondary),
+          : Row(
+              children: [
+                if (isInactive) ...[
+                  const Icon(Icons.link_off, size: 10, color: AppColors.warning),
+                  const SizedBox(width: 3),
+                  Text(
+                    domain.nameserverMismatch ? 'NS mismatch' : 'No CF setup',
+                    style: const TextStyle(fontSize: 10, color: AppColors.warning),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                Text(
+                  domain.effectiveDnsProvider == 'cloudflare' ? 'Cloudflare zone' : '${domain.effectiveDnsProvider.toUpperCase()} zone',
+                  style: const TextStyle(fontSize: 10, color: AppColors.secondary),
+                ),
+              ],
             ),
     );
   }
@@ -228,8 +354,9 @@ class _DomainTile extends ConsumerWidget {
 class _DnsRecordsPanel extends ConsumerWidget {
   final DomainInfo domain;
   final AsyncValue<List<DnsRecordInfo>> recordsAsync;
+  final String searchQuery;
 
-  const _DnsRecordsPanel({required this.domain, required this.recordsAsync});
+  const _DnsRecordsPanel({required this.domain, required this.recordsAsync, this.searchQuery = ''});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -252,8 +379,27 @@ class _DnsRecordsPanel extends ConsumerWidget {
           ],
         ),
       ),
-      data: (records) {
+      data: (allRecords) {
         final isCloudflare = domain.effectiveDnsProvider == 'cloudflare';
+
+        // Apply search filter to records
+        final records = searchQuery.isNotEmpty
+            ? allRecords.where((rec) {
+                final q = searchQuery;
+                if (rec.type.toLowerCase().contains(q)) return true;
+                if (rec.name.toLowerCase().contains(q)) return true;
+                if (rec.content.contains(q)) return true;
+                if (rec.zoneName.toLowerCase().contains(q)) return true;
+                // Match machine names/IPs that resolve to this record's content
+                for (final machine in machines) {
+                  if (machine.ipAddresses.contains(rec.content) &&
+                      (machine.name.toLowerCase().contains(q) || machine.ipAddresses.any((ip) => ip.contains(q)))) {
+                    return true;
+                  }
+                }
+                return false;
+              }).toList()
+            : allRecords;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -372,6 +518,32 @@ class _DnsRecordsPanel extends ConsumerWidget {
                 ],
               ),
             ),
+            // Search/filter info
+            if (searchQuery.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.tertiary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: AppColors.tertiary.withValues(alpha: 0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.filter_list, size: 14, color: AppColors.tertiary),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Showing ${records.length} of ${allRecords.length} records matching "$searchQuery"',
+                          style: TextStyle(fontSize: 12, color: AppColors.tertiary, fontFamily: AppTheme.bodyFont),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             // Nameservers
             if (domain.nameservers.isNotEmpty)
               Padding(

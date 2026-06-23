@@ -17,10 +17,20 @@ class DomainsScreen extends ConsumerStatefulWidget {
 
 class _DomainsScreenState extends ConsumerState<DomainsScreen> {
   int _tabIndex = 0; // 0 = Active (managed DNS), 1 = All
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final domainsAsync = ref.watch(domainsProvider);
+    final dnsMapAsync = ref.watch(dnsMapProvider);
+    final machinesAsync = ref.watch(machinesProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -56,6 +66,13 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
                   onSelected: (_) => setState(() => _tabIndex = 1),
                   selectedColor: AppColors.primary.withValues(alpha: 0.15),
                 ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text('Inactive'),
+                  selected: _tabIndex == 2,
+                  onSelected: (_) => setState(() => _tabIndex = 2),
+                  selectedColor: AppColors.warning.withValues(alpha: 0.15),
+                ),
                 const Spacer(),
                 FilledButton.icon(
                   onPressed: () {
@@ -69,13 +86,44 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
           ),
           const SizedBox(height: 4),
 
+          // ── Search bar ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search by domain, IP, machine name, or DNS record...',
+                hintStyle: TextStyle(color: AppColors.secondary.withValues(alpha: 0.4), fontFamily: AppTheme.bodyFont),
+                prefixIcon: const Icon(Icons.search, size: 18, color: AppColors.secondary),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+              style: TextStyle(fontSize: 13, fontFamily: AppTheme.bodyFont, color: AppColors.primary),
+              onChanged: (value) => setState(() => _searchQuery = value.toLowerCase().trim()),
+            ),
+          ),
+          const SizedBox(height: 4),
+
           // ── Description ──
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'DNS zones and domains scoped to your organization',
+                _tabIndex == 0
+                    ? 'Domains with active Cloudflare DNS'
+                    : _tabIndex == 2
+                        ? 'Domains not connected to Cloudflare — NS mismatch or no CNAME setup'
+                        : 'DNS zones and domains scoped to your organization',
                 style: const TextStyle(fontSize: 14, color: AppColors.secondary),
               ),
             ),
@@ -100,17 +148,74 @@ class _DomainsScreenState extends ConsumerState<DomainsScreen> {
                 ),
               ),
               data: (domains) {
-                final filtered = _tabIndex == 0
-                    ? domains.where((d) => d.canManageDns).toList()
-                    : domains;
+                final dnsMap = dnsMapAsync.value ?? <String, List<DnsRecordInfo>>{};
+                final machines = machinesAsync.value ?? <MachineInfo>[];
+
+                var filtered = _tabIndex == 0
+                    // Active: Cloudflare DNS with correct nameservers
+                    ? domains.where((d) => d.canManageDns && d.effectiveDnsProvider == 'cloudflare' && !d.nameserverMismatch).toList()
+                    : _tabIndex == 2
+                        // Inactive: NS mismatch or not using Cloudflare DNS (no CF CNAME possible)
+                        ? domains.where((d) => d.nameserverMismatch || d.effectiveDnsProvider != 'cloudflare').toList()
+                        // All domains
+                        : domains;
+
+                // ── Apply search filter ──
+                if (_searchQuery.isNotEmpty) {
+                  filtered = filtered.where((domain) {
+                    final q = _searchQuery;
+                    // Match domain fields
+                    if (domain.name.toLowerCase().contains(q)) return true;
+                    if (domain.provider.toLowerCase().contains(q)) return true;
+                    if (domain.effectiveDnsProvider.toLowerCase().contains(q)) return true;
+                    if (domain.cfZoneId?.contains(q) ?? false) return true;
+                    if (domain.nameservers.any((ns) => ns.toLowerCase().contains(q))) return true;
+                    // Match DNS records for this domain
+                    for (final records in dnsMap.values) {
+                      for (final rec in records) {
+                        if (rec.zoneName == domain.name) {
+                          if (rec.name.toLowerCase().contains(q)) return true;
+                          if (rec.content.contains(q)) return true;
+                          if (rec.type.toLowerCase().contains(q)) return true;
+                        }
+                      }
+                    }
+                    // Match machines with IPs that have DNS records pointing to this domain
+                    for (final machine in machines) {
+                      for (final ip in machine.ipAddresses) {
+                        final records = dnsMap[ip] ?? [];
+                        for (final rec in records) {
+                          if (rec.zoneName == domain.name) {
+                            if (machine.name.toLowerCase().contains(q)) return true;
+                            if (ip.contains(q)) return true;
+                          }
+                        }
+                      }
+                    }
+                    return false;
+                  }).toList();
+                }
 
                 if (filtered.isEmpty) {
+                  if (_searchQuery.isNotEmpty) {
+                    return EmptyState(
+                      icon: Icons.search_off,
+                      title: 'No domains match',
+                      subtitle: 'No domains found matching "$_searchQuery". Try searching for a domain name, IP, or machine name.',
+                    );
+                  }
                   return EmptyState(
-                    icon: _tabIndex == 0 ? Icons.dns : Icons.language,
-                    title: _tabIndex == 0 ? 'No active domains' : 'No domains found',
+                    icon: _tabIndex == 0 ? Icons.dns : _tabIndex == 2 ? Icons.link_off : Icons.language,
+                    title: _tabIndex == 0
+                        ? 'No active domains'
+                        : _tabIndex == 2
+                            ? 'No inactive domains'
+                            : 'No domains found',
                     subtitle: _tabIndex == 0
-                        ? 'Domains with managed DNS (Cloudflare, OVH, Namecheap) will appear here.'
-                        : 'Add Cloudflare, OVH, or Namecheap credentials in Providers to see your domains.',
+                        ? 'Domains with active Cloudflare DNS (correct NS) will appear here.'
+                        : _tabIndex == 2
+                            ? 'Domains where NS don’t point to Cloudflare or have no CF CNAME setup will appear here.'
+                            : 'Add Cloudflare, OVH, or Namecheap credentials in Providers to see your domains.',
                   );
                 }
 
@@ -146,6 +251,7 @@ class _DomainCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final dnsProviderColor = AppTheme.providerColor(domain.effectiveDnsProvider);
+    final isInactive = domain.nameserverMismatch || domain.effectiveDnsProvider != 'cloudflare';
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -179,6 +285,27 @@ class _DomainCard extends ConsumerWidget {
                       ),
                     ),
                     AppTheme.providerBadge(domain.provider),
+                    if (isInactive) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.link_off, size: 10, color: AppColors.warning),
+                            const SizedBox(width: 3),
+                            Text(
+                              domain.nameserverMismatch ? 'NS MISMATCH' : 'NO CF',
+                              style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.warning),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     if (domain.cfStatus != null) ...[
                       const SizedBox(width: 8),
                     Container(
