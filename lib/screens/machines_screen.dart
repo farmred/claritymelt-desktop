@@ -7,12 +7,26 @@ import '../providers/app_providers.dart';
 import '../theme/app_theme.dart';
 import 'machine_detail_screen.dart';
 
-class MachinesScreen extends ConsumerWidget {
+class MachinesScreen extends ConsumerStatefulWidget {
   final VoidCallback? onNavigateToDns;
   const MachinesScreen({super.key, this.onNavigateToDns});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MachinesScreen> createState() => _MachinesScreenState();
+}
+
+class _MachinesScreenState extends ConsumerState<MachinesScreen> {
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final machinesAsync = ref.watch(machinesProvider);
     final dnsMapAsync = ref.watch(dnsMapProvider);
 
@@ -30,7 +44,36 @@ class MachinesScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: machinesAsync.when(
+      body: Column(
+        children: [
+          // ── Search bar ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search by IP, machine name, alias, domain, or DNS record...',
+                hintStyle: TextStyle(color: AppColors.secondary.withValues(alpha: 0.4), fontFamily: AppTheme.bodyFont),
+                prefixIcon: const Icon(Icons.search, size: 18, color: AppColors.secondary),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+              style: TextStyle(fontSize: 13, fontFamily: AppTheme.bodyFont, color: AppColors.primary),
+              onChanged: (value) => setState(() => _searchQuery = value.toLowerCase().trim()),
+            ),
+          ),
+          const SizedBox(height: 4),
+          // ── Body ──
+          Expanded(child: machinesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) => SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -57,17 +100,45 @@ class MachinesScreen extends ConsumerWidget {
             );
           }
 
-          final running = machines.where((m) => m.isRunning).length;
-          final ovhVps = machines.where((m) => m.provider == 'ovh-vps').length;
-          final ovhDedicated = machines.where((m) => m.provider == 'ovh-dedicated').length;
-          final ovhCloud = machines.where((m) => m.provider == 'ovh').length;
-          final hetznerCount = machines.where((m) => m.provider == 'hetzner').length;
+          // ── Filter machines based on search query ──
+          List<MachineInfo> filteredMachines = machines;
+          if (_searchQuery.isNotEmpty) {
+            filteredMachines = machines.where((machine) {
+              final q = _searchQuery;
+              // Match machine fields
+              if (machine.name.toLowerCase().contains(q)) return true;
+              if (machine.id.toLowerCase().contains(q)) return true;
+              if (machine.alias?.toLowerCase().contains(q) ?? false) return true;
+              if (machine.ipAddresses.any((ip) => ip.contains(q))) return true;
+              if (machine.provider.toLowerCase().contains(q)) return true;
+              if (machine.region.toLowerCase().contains(q)) return true;
+              if (machine.flavor?.toLowerCase().contains(q) ?? false) return true;
+              // Match DNS records / domains pointing to this machine
+              for (final ip in machine.ipAddresses) {
+                final records = dnsMap[ip] ?? [];
+                for (final rec in records) {
+                  if (rec.name.toLowerCase().contains(q)) return true;
+                  if (rec.zoneName.toLowerCase().contains(q)) return true;
+                  if (rec.content.contains(q)) return true;
+                }
+              }
+              return false;
+            }).toList();
+          }
+
+          final running = filteredMachines.where((m) => m.isRunning).length;
+          final ovhVps = filteredMachines.where((m) => m.provider == 'ovh-vps').length;
+          final ovhDedicated = filteredMachines.where((m) => m.provider == 'ovh-dedicated').length;
+          final ovhCloud = filteredMachines.where((m) => m.provider == 'ovh').length;
+          final hetznerCount = filteredMachines.where((m) => m.provider == 'hetzner').length;
 
           return ListView(
             padding: const EdgeInsets.all(24),
             children: [
               Text(
-                'VPS instances from OVH Cloud & Hetzner Cloud — linked to DNS records',
+                _searchQuery.isNotEmpty
+                    ? 'Showing ${filteredMachines.length} of ${machines.length} machines matching "$_searchQuery"'
+                    : 'VPS instances from OVH Cloud & Hetzner Cloud — linked to DNS records',
                 style: TextStyle(fontSize: 13, color: AppColors.secondary.withValues(alpha: 0.7), fontFamily: AppTheme.bodyFont),
               ),
               const SizedBox(height: 20),
@@ -75,7 +146,7 @@ class MachinesScreen extends ConsumerWidget {
               // ── Summary cards ──
               Row(
                 children: [
-                  Expanded(child: StatCard(label: 'TOTAL', value: '${machines.length}')),
+                  Expanded(child: StatCard(label: _searchQuery.isNotEmpty ? 'MATCHING' : 'TOTAL', value: '${filteredMachines.length}')),
                   const SizedBox(width: 12),
                   Expanded(child: StatCard(label: 'RUNNING', value: '$running', valueColor: AppColors.success)),
                   const SizedBox(width: 12),
@@ -94,20 +165,29 @@ class MachinesScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 20),
 
-              // ── Machine list ──
-              ...machines.map((machine) {
-                final machineDnsRecords = machine.ipAddresses
-                    .expand((ip) => dnsMap[ip] ?? <DnsRecordInfo>[])
-                    .toList();
-                return _MachineCard(
-                  machine: machine,
-                  dnsRecords: machineDnsRecords,
-                  onNavigateToDns: onNavigateToDns,
-                );
-              }),
+              if (filteredMachines.isEmpty && _searchQuery.isNotEmpty)
+                EmptyState(
+                  icon: Icons.search_off,
+                  title: 'No machines match',
+                  subtitle: 'No machines found matching "$_searchQuery". Try searching for an IP, machine name, domain, or DNS record.',
+                )
+              else
+                // ── Machine list ──
+                ...filteredMachines.map((machine) {
+                  final machineDnsRecords = machine.ipAddresses
+                      .expand((ip) => dnsMap[ip] ?? <DnsRecordInfo>[])
+                      .toList();
+                  return _MachineCard(
+                    machine: machine,
+                    dnsRecords: machineDnsRecords,
+                    onNavigateToDns: widget.onNavigateToDns,
+                  );
+                }),
             ],
           );
         },
+      )),
+        ],
       ),
     );
   }
