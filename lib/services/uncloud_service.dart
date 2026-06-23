@@ -370,6 +370,18 @@ class UncloudService {
     }
   }
 
+  /// Switch to a context via `uc ctx set <name>`.
+  Future<bool> setContext(String contextName) async {
+    try {
+      await _run(['ctx', 'set', contextName]);
+      AppLog.info('UC context switched to: $contextName');
+      return true;
+    } catch (e, st) {
+      AppLog.error('uc ctx set $contextName failed', e, st);
+      return false;
+    }
+  }
+
   /// List machines via `uc machine ls`.
   Future<List<UncloudRunningMachine>> listMachines({String? context}) async {
     final output = await _run(['machine', 'ls'], context: context);

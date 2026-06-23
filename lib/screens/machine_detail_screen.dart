@@ -1260,22 +1260,25 @@ class _SshSection extends ConsumerWidget {
     if (machine.ipAddresses.isEmpty) return const SizedBox.shrink();
     final ip = machine.ipAddresses.first;
 
-    // Resolve SSH key from Uncloud config
+    // Resolve SSH key from Uncloud config (match connection by IP/hostname,
+    // even if no ssh_key_file is specified — the terminal will try default keys)
     final configAsync = ref.watch(uncloudConfigProvider);
     String? sshKeyFile;
     configAsync.whenData((config) {
       if (config == null) return;
+      outer:
       for (final ctx in config.contexts.values) {
         for (final conn in ctx.connections) {
           for (final mIp in machine.ipAddresses) {
-            if (conn.sshTarget.contains(mIp) && conn.sshKeyFile != null) {
-              sshKeyFile = conn.resolvedSshKeyFile; // Resolve ~relative paths to home dir
-              break;
+            if (conn.sshTarget.contains(mIp)) {
+              // Found a matching connection — use its key file if specified
+              if (conn.sshKeyFile != null) {
+                sshKeyFile = conn.resolvedSshKeyFile;
+              }
+              break outer;
             }
           }
-          if (sshKeyFile != null) break;
         }
-        if (sshKeyFile != null) break;
       }
     });
 
@@ -1393,6 +1396,28 @@ class _SshSection extends ConsumerWidget {
                   Text('Key: ', style: TextStyle(fontSize: 12, color: AppColors.secondary, fontFamily: AppTheme.bodyFont)),
                   Expanded(child: Text(sshKeyFile!, style: TextStyle(fontSize: 12, color: AppColors.success, fontFamily: AppTheme.bodyFont), overflow: TextOverflow.ellipsis)),
                 ],
+              ),
+            ] else ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.tertiary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(2),
+                  border: Border.all(color: AppColors.tertiary.withValues(alpha: 0.15)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.vpn_key, size: 12, color: AppColors.tertiary.withValues(alpha: 0.7)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Default SSH keys from ~/.ssh/ will be tried automatically',
+                        style: TextStyle(fontSize: 11, color: AppColors.secondary, fontFamily: AppTheme.bodyFont),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
             const SizedBox(height: 8),
@@ -2456,6 +2481,28 @@ class _SshPasswordDialogState extends State<_SshPasswordDialog> {
                     ),
                   ),
                 ],
+              ),
+            ] else ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.tertiary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.tertiary.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.vpn_key, size: 14, color: AppColors.tertiary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Default SSH keys from ~/.ssh/ will be tried automatically (id_ed25519, id_ecdsa, id_rsa)',
+                        style: TextStyle(fontSize: 11, color: AppColors.secondary, fontFamily: AppTheme.bodyFont),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
             const SizedBox(height: 16),

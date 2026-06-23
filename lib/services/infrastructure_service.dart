@@ -392,6 +392,25 @@ class InfrastructureService {
     // Cache to DB
     await _cacheMachines(machines);
 
+    // Enrich the in-memory list with Uncloud fields from the DB cache.
+    // The provider APIs don't return UC associations, so we merge them
+    // from the cache after upsert so the returned list is complete.
+    final cachedRows = await db.cachedMachineDao.getAll();
+    final ucLookup = <String, (String?, String?)>{};
+    for (final r in cachedRows) {
+      ucLookup[r.id] = (r.uncloudMachineId, r.uncloudContext);
+    }
+    for (int i = 0; i < machines.length; i++) {
+      final m = machines[i];
+      final (ucId, ucCtx) = ucLookup[m.id] ?? (null, null);
+      if (ucId != null || ucCtx != null) {
+        machines[i] = m.copyWith(
+          uncloudMachineId: ucId ?? m.uncloudMachineId,
+          uncloudContext: ucCtx ?? m.uncloudContext,
+        );
+      }
+    }
+
     return machines;
   }
 
