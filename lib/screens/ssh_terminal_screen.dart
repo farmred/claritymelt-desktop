@@ -50,6 +50,7 @@ class SshTerminalScreen extends StatefulWidget {
 
 class _SshTerminalScreenState extends State<SshTerminalScreen> {
   late Terminal terminal;
+  final FocusNode _terminalFocusNode = FocusNode();
   SSHClient? _sshClient;
   Pty? _localPty;
   String _status = 'Connecting…';
@@ -74,6 +75,7 @@ class _SshTerminalScreenState extends State<SshTerminalScreen> {
 
   @override
   void dispose() {
+    _terminalFocusNode.dispose();
     _sshClient?.close();
     _localPty?.kill();
     super.dispose();
@@ -383,13 +385,9 @@ class _SshTerminalScreenState extends State<SshTerminalScreen> {
       );
 
       _termLog('Shell opened — terminal ready');
-      // Clear the connection log from terminal after successful connection
-      // so it doesn't pollute the shell session
-      // We add a small delay so the user sees the success messages briefly
-      await Future.delayed(const Duration(milliseconds: 300));
-      // Write a clear screen command so connection messages scroll away
-      terminal.write('\x1b[2J\x1b[H'); // Clear screen and move cursor to top-left
 
+      // Wire terminal output to SSH session immediately so input is captured
+      // from the moment the shell is ready (not after a delay).
       terminal.onOutput = (data) {
         session.write(utf8.encode(data));
       };
@@ -399,6 +397,14 @@ class _SshTerminalScreenState extends State<SshTerminalScreen> {
       };
 
       _pipeSshOutput(session);
+
+      // Clear the connection log from terminal after successful connection
+      // so it doesn't pollute the shell session
+      await Future.delayed(const Duration(milliseconds: 300));
+      terminal.write('\x1b[2J\x1b[H'); // Clear screen and move cursor to top-left
+
+      // Ensure the terminal has focus so keyboard input is accepted
+      _terminalFocusNode.requestFocus();
 
     } on TimeoutException catch (e) {
       final errorInfo = _categorizeSshError(e);
@@ -496,6 +502,9 @@ class _SshTerminalScreenState extends State<SshTerminalScreen> {
       terminal.onResize = (width, height, pixelWidth, pixelHeight) {
         _localPty!.resize(height, width);
       };
+
+      // Ensure the terminal has focus so keyboard input is accepted
+      _terminalFocusNode.requestFocus();
 
       // Pipe PTY output to terminal
       _localPty!.output.listen(
@@ -640,6 +649,7 @@ class _SshTerminalScreenState extends State<SshTerminalScreen> {
                       fontSize: 13,
                     ),
                     autofocus: true,
+                    focusNode: _terminalFocusNode,
                   ),
                 ),
               ],
@@ -662,6 +672,7 @@ class _SshTerminalScreenState extends State<SshTerminalScreen> {
                 fontSize: 12,
               ),
               autofocus: false,
+              focusNode: _terminalFocusNode,
             ),
           ),
           const Divider(height: 1),

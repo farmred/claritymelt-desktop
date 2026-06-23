@@ -708,6 +708,8 @@ final uncloudComposeProvider = FutureProvider<List<UncloudComposeFile>>((ref) as
 });
 
 /// Sync UC machine IDs into the DB. Triggered on config load and manual refresh.
+/// After syncing, invalidates the machines provider so the UI reflects the
+/// updated UC associations.
 final uncloudSyncProvider = FutureProvider<int>((ref) async {
   final config = await ref.watch(uncloudConfigProvider.future);
   if (config == null) return 0;
@@ -715,6 +717,10 @@ final uncloudSyncProvider = FutureProvider<int>((ref) async {
   try {
     final count = await svc.syncUncloudIds(config);
     AppLog.info('UC sync: $count machine(s) updated');
+    // Invalidate machines so they pick up the newly-synced UC IDs from DB
+    if (count > 0) {
+      ref.invalidate(machinesProvider);
+    }
     return count;
   } catch (e, st) {
     AppLog.error('UC sync failed', e, st);
@@ -819,6 +825,26 @@ final uncloudClusterDomainProvider = FutureProvider<String?>((ref) async {
     AppLog.warning('Failed to get UC cluster domain', e, st);
     return null;
   }
+});
+
+/// Switch the active Uncloud context.
+/// Runs `uc ctx set <name>` and then invalidates all dependent providers.
+final switchUncloudContextProvider = FutureProvider.family<bool, String>((ref, contextName) async {
+  final svc = ref.read(uncloudServiceProvider);
+  final success = await svc.setContext(contextName);
+  if (success) {
+    // Invalidate config so it re-reads the file with the new current_context
+    ref.invalidate(uncloudConfigProvider);
+    // Invalidate all providers that depend on the active context
+    ref.invalidate(uncloudRunningServicesProvider);
+    ref.invalidate(uncloudRunningMachinesProvider);
+    ref.invalidate(uncloudClusterDomainProvider);
+    ref.invalidate(uncloudSyncProvider);
+    ref.invalidate(uncloudContainersForIpProvider);
+    // Invalidate machines so UC associations refresh
+    ref.invalidate(machinesProvider);
+  }
+  return success;
 });
 
 // ── Notes & Tasks ──────────────────────────────────────────────────────

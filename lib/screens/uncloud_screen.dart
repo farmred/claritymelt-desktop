@@ -11,11 +11,32 @@ import '../services/uncloud_service.dart';
 import '../theme/app_theme.dart';
 import 'uncloud_context_dialog.dart';
 
-class UncloudScreen extends ConsumerWidget {
+class UncloudScreen extends ConsumerStatefulWidget {
   const UncloudScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<UncloudScreen> createState() => _UncloudScreenState();
+}
+
+class _UncloudScreenState extends ConsumerState<UncloudScreen> {
+  String? _switchingContext;
+  bool _initialRefreshDone = false;
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Always re-read config on build to detect external context changes
+    // (e.g. user ran `uc ctx set` from CLI)
+    if (!_initialRefreshDone) {
+      _initialRefreshDone = true;
+      Future.microtask(() {
+        ref.invalidate(uncloudConfigProvider);
+      });
+    }
     final configAsync = ref.watch(uncloudConfigProvider);
 
     return Scaffold(
@@ -31,10 +52,12 @@ class UncloudScreen extends ConsumerWidget {
             icon: const Icon(Icons.refresh, size: 18),
             tooltip: 'Refresh live data',
             onPressed: () {
+              ref.invalidate(uncloudConfigProvider);
               ref.invalidate(uncloudRunningServicesProvider);
               ref.invalidate(uncloudRunningMachinesProvider);
               ref.invalidate(uncloudClusterDomainProvider);
               ref.invalidate(uncloudContainersForIpProvider);
+              ref.invalidate(uncloudSyncProvider);
             },
           ),
         ],
@@ -177,6 +200,32 @@ class UncloudScreen extends ConsumerWidget {
     );
   }
 
+  // ── Switch context ───────────────────────────────────────────────
+
+  Future<void> _switchContext(String contextName) async {
+    setState(() => _switchingContext = contextName);
+    try {
+      final result = await ref.read(switchUncloudContextProvider(contextName).future);
+      if (!mounted) return;
+      if (result) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Switched to context: $contextName')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to switch context to: $contextName')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error switching context: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _switchingContext = null);
+    }
+  }
+
   // ── Overview ──────────────────────────────────────────────────────────
 
   Widget _buildOverviewRow(UncloudConfig config, AsyncValue<String?> domainAsync, AsyncValue<int> syncAsync) {
@@ -212,6 +261,7 @@ class UncloudScreen extends ConsumerWidget {
   Widget _buildContextCard(BuildContext context, WidgetRef ref, String name, UncloudContext ctx, String activeName) {
     final isActive = name == activeName;
     final primary = ctx.primary;
+    final isSwitching = _switchingContext == name;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -243,7 +293,20 @@ class UncloudScreen extends ConsumerWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(color: AppColors.success.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(2)),
                 child: const Text('ACTIVE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.success, fontFamily: AppTheme.bodyFont, letterSpacing: 0.5)),
-              ),
+              )
+            else
+              isSwitching
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : TextButton.icon(
+                    onPressed: () => _switchContext(name),
+                    icon: const Icon(Icons.swap_horiz, size: 14),
+                    label: const Text('SWITCH', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
             const Spacer(),
             Text('${ctx.connections.length} connection${ctx.connections.length != 1 ? 's' : ''}', style: TextStyle(fontSize: 11, color: AppColors.secondary, fontFamily: AppTheme.bodyFont)),
           ],

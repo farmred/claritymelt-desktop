@@ -53,6 +53,55 @@ class MachineInfo {
     this.currency,
   });
 
+  /// Create a copy with optional field overrides.
+  MachineInfo copyWith({
+    String? id,
+    String? name,
+    String? alias,
+    String? provider,
+    String? status,
+    List<String>? ipAddresses,
+    String? region,
+    String? flavor,
+    String? image,
+    String? createdAt,
+    int? vcpus,
+    int? memoryMB,
+    int? diskGB,
+    String? bandwidth,
+    String? os,
+    String? commercialRange,
+    Map<String, dynamic>? raw,
+    String? uncloudMachineId,
+    String? uncloudContext,
+    double? monthlyCost,
+    String? currency,
+  }) {
+    return MachineInfo(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      alias: alias ?? this.alias,
+      provider: provider ?? this.provider,
+      status: status ?? this.status,
+      ipAddresses: ipAddresses ?? this.ipAddresses,
+      region: region ?? this.region,
+      flavor: flavor ?? this.flavor,
+      image: image ?? this.image,
+      createdAt: createdAt ?? this.createdAt,
+      vcpus: vcpus ?? this.vcpus,
+      memoryMB: memoryMB ?? this.memoryMB,
+      diskGB: diskGB ?? this.diskGB,
+      bandwidth: bandwidth ?? this.bandwidth,
+      os: os ?? this.os,
+      commercialRange: commercialRange ?? this.commercialRange,
+      raw: raw ?? this.raw,
+      uncloudMachineId: uncloudMachineId ?? this.uncloudMachineId,
+      uncloudContext: uncloudContext ?? this.uncloudContext,
+      monthlyCost: monthlyCost ?? this.monthlyCost,
+      currency: currency ?? this.currency,
+    );
+  }
+
   /// Display name: alias if set, otherwise the provider name.
   String get displayName => alias != null && alias!.isNotEmpty ? alias! : name;
 
