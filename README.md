@@ -61,7 +61,73 @@ flutter run -d macos
 flutter build macos
 ```
 
-The built app will be at `build/macos/Build/Products/Release/claritymelt_desktop.app`.
+The built app will be at `build/macos/Build/Products/Release/ClarityMelt.app`.
+
+## Mac App Store Distribution
+
+### Packaging
+
+The `tool/package.sh` script handles building, archiving, and packaging:
+
+```bash
+# Check setup (Xcode, Flutter, signing certs)
+make check
+
+# Build release .app
+make build
+
+# Create DMG for direct distribution
+make dmg
+
+# Archive for App Store submission
+make archive
+
+# Generate App Store metadata
+make metadata
+
+# Full pipeline (build + DMG + metadata)
+make package
+```
+
+### App Store Submission
+
+1. **Build & archive**: `make archive`
+2. Open **Xcode → Organizer**, select the archive
+3. Click **Distribute App** → **Mac App Store**
+4. Upload to **App Store Connect**
+5. Add metadata (description, keywords, screenshots)
+6. Submit for review
+
+### Direct Distribution (DMG)
+
+```bash
+# Build DMG
+make dmg
+
+# Notarize (requires Apple Developer account)
+export APPLE_ID_EMAIL=your@email.com
+export APPLE_ID_PASSWORD=app-specific-password
+export DEVELOPMENT_TEAM=YOUR_TEAM_ID
+make notarize
+```
+
+### Notarization
+
+macOS apps distributed outside the App Store must be notarized:
+
+1. Archive your app with a Developer ID certificate
+2. Submit to Apple's notarization service: `make notarize`
+3. Staple the ticket: done automatically by the notarize script
+
+### Configuration
+
+| Setting | File | Value |
+|---------|------|-------|
+| Bundle ID | `macos/Runner/Configs/AppInfo.xcconfig` | `com.claritymelt.app` |
+| App Name | `macos/Runner/Configs/AppInfo.xcconfig` | `ClarityMelt` |
+| Version | `pubspec.yaml` | `1.0.0+1` |
+| Entitlements | `macos/Runner/Release.entitlements` | sandbox + network |
+| Team ID | Env var `DEVELOPMENT_TEAM` | Your Apple Team ID |
 
 ## Environment Variables (Optional Fallback)
 
@@ -109,6 +175,45 @@ flutter run -d macos --dart-define=HETZNER_API_TOKEN=your_token
 - `cached_domains` — Cached domain data
 - `cached_dns_records` — Cached DNS record data
 - `preferences` — Key-value app settings (encryption key, theme, org name)
+
+## App Store Screenshots
+
+Generate screenshots at standard macOS App Store distribution sizes:
+
+| Size | Use Case |
+|------|----------|
+| 1280 × 800 | MacBook Air 13" (non-Retina) |
+| 1440 × 900 | MacBook Air 13" (scaled) / 15" (non-Retina) |
+| 2560 × 1600 | MacBook Air/Pro 13" (Retina @2×) |
+| 2880 × 1800 | MacBook Pro 15/16" (Retina @2×) |
+
+### Automated (Integration Test)
+
+```bash
+make screenshots
+# or: ./tool/screenshot.sh auto
+```
+
+### Interactive (Manual Window Capture)
+
+```bash
+# 1. Start the app
+flutter run -d macos
+
+# 2. Run manual capture (resizes window + screencapture per tab)
+make screenshots-manual
+# or: ./tool/screenshot.sh manual
+```
+
+### Quick Capture (Active Window)
+
+```bash
+flutter run -d macos
+make screenshots-quick
+# or: ./tool/screenshot.sh quick
+```
+
+Screenshots are saved to `screenshots/{size}/` with naming: `{tab}_{size}.png`.
 
 ## Tech Stack
 
