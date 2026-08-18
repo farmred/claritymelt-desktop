@@ -1,4 +1,4 @@
-.PHONY: run build generate deps screenshots clean-screenshots package archive dmg notarize metadata check
+.PHONY: run build generate deps screenshots clean-screenshots package archive dmg notarize metadata check appstore-validate appstore-upload appstore-jwt appstore-all appstore-build clean
 
 # ClarityMelt Desktop
 
@@ -52,6 +52,23 @@ notarize:
 
 metadata:
 	@./tool/package.sh metadata
+
+# ── App Store ─────────────────────────────────────────────────────────
+
+appstore-validate:
+	@./tool/appstore_upload.sh validate
+
+appstore-upload:
+	@./tool/appstore_upload.sh upload
+
+appstore-jwt:
+	@./tool/appstore_upload.sh jwt
+
+appstore-all:
+	@./tool/appstore_upload.sh all
+
+appstore-build:
+	@./tool/appstore_upload.sh build
 
 # ── Clean ─────────────────────────────────────────────────────────────
 

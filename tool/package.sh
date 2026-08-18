@@ -196,29 +196,14 @@ archive_app() {
     -archivePath "$ARCHIVE_PATH" \
     $TEAM_ID_ARG \
     CODE_SIGN_IDENTITY="Apple Development" \
+    CODE_SIGN_STYLE=Automatic \
     | tail -20
 
   if [ -d "$ARCHIVE_PATH" ]; then
     ok "Archive created: $ARCHIVE_PATH"
   else
-    warn "Archive creation failed. Trying with ad-hoc signing..."
-    xcodebuild archive \
-      -workspace "${MACOS_DIR}/Runner.xcworkspace" \
-      -scheme Runner \
-      -configuration Release \
-      -archivePath "$ARCHIVE_PATH" \
-      CODE_SIGN_IDENTITY="-" \
-      CODE_SIGNING_REQUIRED=NO \
-      CODE_SIGNING_ALLOWED=NO \
-      | tail -20
-
-    if [ -d "$ARCHIVE_PATH" ]; then
-      ok "Archive created (unsigned): $ARCHIVE_PATH"
-      warn "Archive is unsigned. Sign with your distribution certificate before upload."
-    else
-      err "Archive creation failed"
-      exit 1
-    fi
+    err "Archive creation failed"
+    exit 1
   fi
 }
 
@@ -244,7 +229,7 @@ export_app() {
 <plist version="1.0">
 <dict>
 	<key>method</key>
-	<string>app-store</string>
+	<string>app-store-connect</string>
 	<key>teamID</key>
 	<string>${TEAM_ID}</string>
 	<key>uploadSymbols</key>
@@ -259,18 +244,35 @@ PLIST
 
   info "Exporting archive..."
 
-  xcodebuild -exportArchive \
+  if ! xcodebuild -exportArchive \
     -archivePath "$ARCHIVE_PATH" \
     -exportPath "$EXPORT_DIR" \
-    -exportOptionsPlist "$EXPORT_PLIST" \
-    | tail -20
+    -exportOptionsPlist "$EXPORT_PLIST" 2>&1; then
+    echo ""
+    warn "Export failed. This usually means distribution certificates/provisioning profiles are not installed."
+    echo ""
+    echo "  To fix this, you need either:"
+    echo "    1. A 'Mac Installer Distribution' certificate + App Store provisioning profile (for App Store)"
+    echo "    2. A 'Developer ID Installer' certificate (for direct distribution)"
+    echo ""
+    echo "  Install certificates via Xcode > Settings > Accounts > Manage Certificates"
+    echo "  Or create them at https://developer.apple.com/account/resources/certificates/add"
+    echo ""
+    echo "  The archive was created successfully at:"
+    echo "    $ARCHIVE_PATH"
+    echo ""
+    echo "  You can also upload the archive via Xcode Organizer:"
+    echo "    Xcode > Window > Organizer > Distribute App"
+    echo ""
+    return 1
+  fi
 
   if [ -d "${EXPORT_DIR}/ClarityMelt.pkg" ]; then
     ok "Package created: ${EXPORT_DIR}/ClarityMelt.pkg"
   elif [ -d "${EXPORT_DIR}/claritymelt_desktop.pkg" ]; then
     ok "Package created: ${EXPORT_DIR}/claritymelt_desktop.pkg"
   else
-    warn "Export may have failed. Check ${EXPORT_DIR}/ for output files."
+    warn "No .pkg found in export directory. Contents:"
     ls -la "${EXPORT_DIR}/"
   fi
 }
