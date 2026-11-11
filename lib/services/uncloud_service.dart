@@ -13,7 +13,8 @@ import 'package:yaml/yaml.dart';
 
 import '../database/database.dart';
 import '../utils/app_log.dart';
-import '../utils/platform_utils.dart';
+import '../utils/platform_utils.dart'
+    show realHome, realHomeEnvironment, readFileSandboxAware, cacheConfigContent, readCachedConfig;
 
 // ── Config models ───────────────────────────────────────────────────────
 
@@ -265,23 +266,64 @@ class UncloudService {
   }
 
   static Future<UncloudConfig?> loadConfig() async {
-    final file = File(configPath());
-    if (!await file.exists()) {
-      AppLog.debug('UC config not found at ${file.path}');
-      return null;
-    }
+    final path = configPath();
+
+    // Strategy 1: Try sandbox-aware file read (handles App Store sandbox)
     try {
-      final config = parseConfig(await file.readAsString());
-      if (config != null) {
-        AppLog.info('Loaded UC config: ${config.contexts.length} contexts, active=${config.currentContext}');
-      } else {
-        AppLog.warning('UC config parsed as null');
+      final content = await readFileSandboxAware(path);
+      if (content != null) {
+        final config = parseConfig(content);
+        if (config != null) {
+          AppLog.info('Loaded UC config: ${config.contexts.length} contexts, active=${config.currentContext}');
+          // Cache for future reads in case sandbox blocks direct access later
+          await cacheConfigContent('uncloud_config.yaml', content);
+          return config;
+        } else {
+          AppLog.warning('UC config parsed as null');
+        }
       }
-      return config;
     } catch (e, st) {
-      AppLog.error('Failed to parse UC config', e, st);
-      return null;
+      AppLog.error('Failed to read UC config from $path', e, st);
     }
+
+    // Strategy 2: Try loading from cached copy (app support directory)
+    try {
+      final cachedContent = await readCachedConfig('uncloud_config.yaml');
+      if (cachedContent != null) {
+        final config = parseConfig(cachedContent);
+        if (config != null) {
+          AppLog.info('Loaded UC config from cache: ${config.contexts.length} contexts, active=${config.currentContext}');
+          return config;
+        }
+      }
+    } catch (e, st) {
+      AppLog.warning('Failed to load cached UC config', e, st);
+    }
+
+    // Strategy 3: Try `uc config show` CLI command (no DB needed for parsing)
+    try {
+      final ucPath = await _findUcBinary();
+      if (ucPath != null) {
+        final result = await Process.run(ucPath, ['config', 'show'],
+            environment: realHomeEnvironment());
+        if (result.exitCode == 0) {
+          final output = (result.stdout as String).trim();
+          if (output.isNotEmpty) {
+            final config = parseConfig(output);
+            if (config != null) {
+              AppLog.info('Loaded UC config via CLI: ${config.contexts.length} contexts');
+              await cacheConfigContent('uncloud_config.yaml', output);
+              return config;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      AppLog.debug('uc config show CLI fallback failed: $e');
+    }
+
+    AppLog.warning('UC config not found at $path (and no cache/CLI fallback)');
+    return null;
   }
 
   static UncloudConfig? parseConfig(String yamlContent) {
@@ -321,6 +363,23 @@ class UncloudService {
   }
 
   // ── CLI commands ───────────────────────────────────────────────────────
+
+  /// Try to find the `uc` binary in common locations.
+  static Future<String?> _findUcBinary() async {
+    // Try PATH first
+    final env = realHomeEnvironment();
+    final pathDirs = env['PATH']?.split(':') ?? ['/usr/local/bin', '/opt/homebrew/bin', '/usr/bin'];
+    for (final dir in pathDirs) {
+      final file = File('$dir/uc');
+      if (await file.exists()) return file.path;
+    }
+    // Common locations
+    for (final dir in ['/usr/local/bin', '/opt/homebrew/bin', '/usr/bin', '/opt/homebrew']) {
+      final file = File('$dir/uc');
+      if (await file.exists()) return file.path;
+    }
+    return null;
+  }
 
   String get _uc => _ucPath ?? 'uc';
 
@@ -526,7 +585,23 @@ class UncloudService {
   static Future<List<UncloudComposeFile>> loadComposeFiles(String directory) async {
     final files = <UncloudComposeFile>[];
     final dir = Directory(directory);
-    if (!await dir.exists()) return files;
+    // For sandboxed apps, check directory existence via the list method
+    try {
+      if (!await dir.exists()) {
+        // Try sandbox-aware listing
+        final home = realHome();
+        final expandedDir = directory.replaceFirst('~/', '$home/').replaceFirst('~', home);
+        if (expandedDir != directory) {
+          final expandedDirObj = Directory(expandedDir);
+          if (!await expandedDirObj.exists()) return files;
+        } else {
+          return files;
+        }
+      }
+    } catch (e) {
+      AppLog.debug('Directory check failed for $directory: $e');
+      return files;
+    }
 
     for (final filename in [
       'uncloud.yml',
@@ -534,18 +609,18 @@ class UncloudService {
       'compose.yml',
       'compose.yaml'
     ]) {
-      final file = File('$directory/$filename');
-      if (await file.exists()) {
-        try {
-          final content = await file.readAsString();
-          final compose = parseCompose(content, filePath: file.path);
+      final path = '$directory/$filename';
+      try {
+        final content = await readFileSandboxAware(path);
+        if (content != null) {
+          final compose = parseCompose(content, filePath: path);
           if (compose != null) {
-            AppLog.debug('Loaded compose file: ${file.path}');
+            AppLog.debug('Loaded compose file: $path');
             files.add(compose);
           }
-        } catch (e, st) {
-          AppLog.warning('Failed to parse compose file ${file.path}', e, st);
         }
+      } catch (e, st) {
+        AppLog.warning('Failed to parse compose file $path', e, st);
       }
     }
     return files;

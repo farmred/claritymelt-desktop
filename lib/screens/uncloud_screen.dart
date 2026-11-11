@@ -100,16 +100,19 @@ class _UncloudScreenState extends ConsumerState<UncloudScreen> {
             const Text('No Uncloud Config Found', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, fontFamily: AppTheme.displayFont)),
             const SizedBox(height: 8),
             Text(
-              'Place your Uncloud config at:\n~/.config/uncloud/config.yaml\n\n'
-              'Run `uc machine init` to create one.',
+              'Place your Uncloud config at:\n'
+              '~/.config/uncloud/config.yaml\n\n'
+              'Run `uc machine init` to create one, then hit retry.\n\n'
+              'Tip: press Cmd+R (hot restart) if you just created the config '
+              'while the app was running.',
               style: TextStyle(fontSize: 13, color: AppColors.secondary, fontFamily: AppTheme.bodyFont, height: 1.6),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
-              onPressed: () => debugPrint('Navigate to setup'),
-              icon: const Icon(Icons.help_outline, size: 16),
-              label: const Text('SETUP GUIDE'),
+              onPressed: () => ref.invalidate(uncloudConfigProvider),
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('RETRY'),
             ),
           ],
         ),

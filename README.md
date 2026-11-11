@@ -89,6 +89,25 @@ make metadata
 make package
 ```
 
+### App Sandbox Note
+
+The **App Sandbox is disabled** (`ENABLE_APP_SANDBOX = NO` in the Xcode build
+settings and `com.apple.security.app-sandbox = false` in both entitlements
+files). This is required because the Uncloud integration must:
+
+- read user files outside the app container (`~/.config/uncloud/config.yaml`,
+  SSH keys, compose files)
+- spawn third-party binaries (`uc` CLI) that connect over SSH to the cluster
+
+Both are impossible inside the macOS App Sandbox (reads fail with
+`Operation not permitted`, and spawning `uc` is denied outright).
+DMG / direct distribution works fine unsandboxed. **Mac App Store
+distribution would require re-enabling the sandbox** and either removing the
+Uncloud CLI features or implementing a security-scoped bookmark flow (user
+picks the config folder once via an open panel, app stores a bookmark) —
+sandboxed apps can never spawn arbitrary binaries, so the live `uc` data
+would still be unavailable.
+
 ### App Store Submission
 
 1. **Build & archive**: `make archive`

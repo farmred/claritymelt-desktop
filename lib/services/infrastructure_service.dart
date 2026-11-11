@@ -10,6 +10,7 @@ import '../services/hetzner_service.dart';
 import '../services/ovh_service.dart';
 import '../services/namecheap_service.dart';
 import '../services/crypto_service.dart';
+import '../utils/app_log.dart';
 
 /// Central service that orchestrates all infrastructure provider calls,
 /// credential resolution, and caching to SQLite.
@@ -30,12 +31,20 @@ class InfrastructureService {
     if (stored.isNotEmpty) {
       try {
         final encryptionKey = await db.preferencesDao.getEncryptionKey();
-        if (encryptionKey.isEmpty) return null;
+        if (encryptionKey.isEmpty) {
+          AppLog.warning('$provider credentials: encryption key is empty, cannot decrypt');
+          return null;
+        }
         final decrypted = CryptoService.decrypt(stored.first.credentials, encryptionKey);
-        return Map<String, String>.from(jsonDecode(decrypted));
+        final result = Map<String, String>.from(jsonDecode(decrypted));
+        AppLog.debug('$provider credentials loaded from DB (label: ${stored.first.label})');
+        return result;
       } catch (e) {
+        AppLog.error('$provider credentials: decryption failed', e);
         // Fall through to env vars
       }
+    } else {
+      AppLog.debug('$provider credentials: none stored in DB');
     }
 
     // 2. Fall back to env vars
@@ -602,11 +611,13 @@ class InfrastructureService {
     final cfCreds = await getCredentials('cloudflare');
     if (cfCreds != null && cfCreds.containsKey('apiToken')) {
       try {
+        AppLog.info('Fetching Cloudflare zones with API token...');
         final cf = CloudflareService(
           apiToken: cfCreds['apiToken']!,
           accountId: cfCreds['accountId'],
         );
         final zones = await cf.listZones();
+        AppLog.info('Cloudflare: ${zones.length} zone(s) found');
         for (final zone in zones) {
           final cfNs = List<String>.from(zone['nameservers'] ?? []);
           domains.add(DomainInfo(
@@ -619,9 +630,11 @@ class InfrastructureService {
             cfNameservers: cfNs,
           ));
         }
-      } catch (e) {
-        print('[ClarityMelt] Cloudflare zones error: $e');
+      } catch (e, st) {
+        AppLog.error('Cloudflare zones error', e, st);
       }
+    } else {
+      AppLog.info('Cloudflare credentials not configured — skipping zone fetch');
     }
 
     // Namecheap domains
@@ -662,8 +675,8 @@ class InfrastructureService {
             ));
           }
         }
-      } catch (e) {
-        print('[ClarityMelt] Namecheap domains error: $e');
+      } catch (e, st) {
+        AppLog.error('Namecheap domains error', e, st);
       }
     }
 
@@ -700,8 +713,8 @@ class InfrastructureService {
             ));
           }
         }
-      } catch (e) {
-        print('[ClarityMelt] OVH domains error: $e');
+      } catch (e, st) {
+        AppLog.error('OVH domains error', e, st);
       }
     }
 
@@ -1062,8 +1075,8 @@ class InfrastructureService {
             clientIp: ncCreds['clientIp'] ?? '',
           );
           nameserversUpdated = await nc.updateNameservers(domain, ns);
-        } catch (e) {
-          print('[ClarityMelt] Namecheap nameserver update error: $e');
+        } catch (e, st) {
+          AppLog.error('Namecheap nameserver update error', e, st);
         }
       }
     }
@@ -1115,8 +1128,8 @@ class InfrastructureService {
               ));
             }
           }
-        } catch (e) {
-          print('[ClarityMelt] Cloudflare DNS map error for ${domain.name}: $e');
+        } catch (e, st) {
+          AppLog.error('Cloudflare DNS map error for ${domain.name}', e, st);
         }
       }
     }
@@ -1146,8 +1159,8 @@ class InfrastructureService {
               ));
             }
           }
-        } catch (e) {
-          print('[ClarityMelt] OVH DNS map error for ${domain.name}: $e');
+        } catch (e, st) {
+          AppLog.error('OVH DNS map error for ${domain.name}', e, st);
         }
       }
     }
@@ -1482,7 +1495,7 @@ class InfrastructureService {
       final decrypted = CryptoService.decrypt(cred.credentials, encryptionKey);
       return Map<String, String>.from(jsonDecode(decrypted));
     } catch (e) {
-      print('[ClarityMelt] decryptCredentials error: $e');
+      AppLog.error('decryptCredentials error', e);
       return null;
     }
   }
